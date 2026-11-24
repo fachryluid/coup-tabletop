@@ -1,0 +1,27 @@
+name: coup-tabletop
+services:
+  tabletop:
+    image: coup-tabletop:${COUP_RELEASE:-local}
+    build: .
+    init: true
+    restart: always
+    expose: ["3000"]
+    environment:
+      VIRTUAL_HOST: ${COUP_DOMAIN:-coup.jejakode.com}
+      VIRTUAL_PORT: "3000"
+      LETSENCRYPT_HOST: ${COUP_DOMAIN:-coup.jejakode.com}
+      LETSENCRYPT_EMAIL: ${ACME_EMAIL:-jejakodeindonesia@gmail.com}
+    networks: [proxy]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-shared-network}

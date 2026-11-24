@@ -1,0 +1,281 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: #f5f0e6;
+  color: #28251f;
+  font:
+    16px/1.5 "Segoe UI",
+    sans-serif;
+}
+main {
+  max-width: 1120px;
+  margin: auto;
+  padding: 0 clamp(16px, 4vw, 48px) 50px;
+}
+header,
+.title,
+.seat,
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+header {
+  height: 72px;
+  border-bottom: 1px solid #aaa08b;
+  justify-content: flex-start;
+  font-weight: 650;
+}
+header a {
+  margin-left: auto;
+  color: inherit;
+}
+.mark {
+  font: 34px Georgia;
+  color: #853222;
+}
+fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+h1,
+h2,
+h3,
+.card {
+  font-family: Georgia, "Times New Roman", serif;
+}
+h1 {
+  font-size: clamp(38px, 6vw, 70px);
+  line-height: 1.02;
+  font-weight: normal;
+  margin: 8px 0 22px;
+}
+h2 {
+  font-size: 25px;
+  line-height: 1.2;
+  margin: 0 0 15px;
+}
+h3 {
+  font-size: 18px;
+}
+.title {
+  margin: 32px 0 12px;
+}
+.columns,
+.entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+  gap: 26px;
+}
+section {
+  padding: 24px;
+  background: #fffdf7;
+  border: 1px solid #cfc6b6;
+  margin-bottom: 18px;
+}
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+button,
+select {
+  min-height: 44px;
+  padding: 8px 13px;
+  background: #fffdf7;
+  border: 1px solid #998e78;
+  border-radius: 4px;
+}
+button {
+  cursor: pointer;
+  margin: 3px;
+}
+button:enabled:hover {
+  background: #ece4d6;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.primary,
+button.primary:enabled:hover {
+  background: #803322;
+  color: #fffdf7;
+  border-color: #803322;
+}
+.primary {
+  font-weight: 650;
+}
+small {
+  display: block;
+  font:
+    14px/1.4 "Segoe UI",
+    sans-serif;
+  color: #625a4f;
+}
+h2 small {
+  display: inline;
+}
+input:not([type="checkbox"]) {
+  width: 100%;
+  display: block;
+  min-height: 44px;
+  margin: 5px 0;
+  padding: 8px 12px;
+  border: 1px solid #998e78;
+  border-radius: 3px;
+}
+label {
+  display: block;
+  margin: 10px 0;
+}
+input[type="checkbox"] {
+  width: 23px;
+  height: 23px;
+  accent-color: #74301f;
+  flex: none;
+}
+.setting,
+.seat {
+  padding: 10px 0;
+  border-bottom: 1px solid #ddd4c5;
+  overflow-wrap: anywhere;
+}
+.seat div:last-child {
+  text-align: right;
+}
+.felt,
+.cover {
+  color: #faf2de;
+  background: #263e35;
+}
+.hand,
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.card,
+.playingcard {
+  border: 4px double #b9a67d;
+  background: #fcf5df;
+  color: #533b2e;
+  text-align: center;
+}
+.card {
+  padding: 12px;
+  min-width: 100px;
+}
+.card span {
+  display: block;
+  font-size: 30px;
+}
+.choices button {
+  text-align: left;
+  flex: 1 1 120px;
+}
+.history {
+  padding-left: 28px;
+
+}
+.history li {
+  margin: 6px 0;
+}
+summary {
+  padding: 10px 0;
+  cursor: pointer;
+}
+.entry {
+  margin: clamp(25px, 7vw, 88px) auto;
+  max-width: 900px;
+  gap: 0;
+  grid-template-columns: 1fr 1fr;
+}
+.entry section {
+  padding: clamp(24px, 4vw, 48px);
+  margin: 0;
+}
+.entry label {
+  margin-top: 20px;
+}
+.entry h1 {
+  font-size: 80px;
+}
+.cover {
+  position: relative;
+  min-height: 180px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: repeating-linear-gradient(45deg, #294337 0 2px, #284135 2px 8px);
+}
+.playingcard {
+  position: absolute;
+  width: 135px;
+  height: 185px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 6px 14px #15221955;
+  font-size: 80px;
+}
+.rear {
+  transform: translate(-30%, -8%) rotate(-17deg);
+  background: #863b2d;
+  color: #efe3c5;
+}
+.front {
+  transform: translate(20%, 8%) rotate(12deg);
+}
+[role="alert"] {
+  background: #fbe2d4;
+  padding: 12px;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid #16759e;
+  outline-offset: 2px;
+}
+@media (max-width: 720px) {
+  .columns,
+  .entry {
+    grid-template-columns: 1fr;
+  }
+  .columns {
+    gap: 0;
+  }
+  .entry {
+    margin-top: 20px;
+  }
+  .entry h1 {
+    font-size: 52px;
+  }
+  .cover {
+    min-height: 125px;
+  }
+  .playingcard {
+    width: 74px;
+    height: 106px;
+    font-size: 42px;
+  }
+  .title,
+  .seat {
+    flex-wrap: wrap;
+  }
+  .seat div:last-child {
+    text-align: left;
+  }
+  section {
+    padding: 17px;
+  }
+  .title {
+    margin-top: 22px;
+  }
+}
