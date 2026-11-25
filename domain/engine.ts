@@ -161,7 +161,15 @@ function cloneGame(state: Game): Game {
     poolArt: alignArt(state.pool, state.poolArt),
     log: [...state.log],
     undo: state.undo ? { ...state.undo } : undefined,
+    bluffs: state.bluffs ? { ...state.bluffs } : {},
   };
+}
+function noteClaim(g: Game, id: string, role?: Role) {
+  if (!role) return;
+  if (!player(g, id).hand.includes(role)) {
+    g.bluffs = g.bluffs ?? {};
+    g.bluffs[id] = (g.bluffs[id] ?? 0) + 1;
+  }
 }
 function markResolved(g: Game) {
   const last = g.log.length - 1;
@@ -459,6 +467,7 @@ export function play(
     if (!g.pending.length) close(g);
     else if (g.config.timer) g.deadline = now + 30000;
   } else if (m.kind === "Block") {
+    noteClaim(g, id, m.role);
     g.blocker = { id, role: m.role! };
     record(g, {
       speech: { by: id, words: declaration(m) },
@@ -565,6 +574,7 @@ export function play(
     if (m.kind === "Coup") p.coins -= 7;
     if (m.kind === "Assassinate") p.coins -= 3;
     const role = claims[m.kind as keyof typeof claims];
+    noteClaim(g, id, role);
     const targetPlayer = m.target ? player(g, m.target) : undefined;
     const coinMove =
       m.kind === "Income"

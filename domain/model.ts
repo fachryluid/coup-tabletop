@@ -122,6 +122,8 @@ export interface Game {
   paused: number | null;
   undo?: { id: string; coins: number };
   switched?: boolean;
+  /** Internal server-only bluff counter; never projected before stage === "over". */
+  bluffs?: Record<string, number>;
 }
 export function phaseStamp(g: Game): PhaseStamp {
   return { actionId: g.matchId + "/" + g.actionNumber, phase: g.stage };
@@ -202,6 +204,7 @@ export function deal(
     poolArt: [],
     paused: null,
     switched: false,
+    bluffs: {},
     log: [],
   };
   record(game, { text: "Kartu dibagikan. Pertandingan dimulai." });

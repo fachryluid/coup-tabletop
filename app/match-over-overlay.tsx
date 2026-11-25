@@ -125,7 +125,7 @@ function AwardIcon({ id }: { id: MatchAwardId }) {
           <path d="m9 12 2 2 4-4" />
         </svg>
       );
-    case "most_claims":
+    case "most_bluffs":
       return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 9c0 5 3.5 9 8 9s8-4 8-9V5l-8-2-8 2v4Z" />

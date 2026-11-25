@@ -6,7 +6,7 @@ export type MatchAwardId =
   | "most_challenges"
   | "most_blocks"
   | "richest_peak"
-  | "most_claims";
+  | "most_bluffs";
 
 export interface MatchAward {
   id: MatchAwardId;
@@ -34,7 +34,6 @@ export function computeMatchStats(game: BotObservation): MatchStats {
   const attacked = new Map<string, number>();
   const challenged = new Map<string, number>();
   const blocked = new Map<string, number>();
-  const claimed = new Map<string, number>();
   const peakCoins = new Map<string, number>();
 
   const actionIds = new Set<string>();
@@ -67,10 +66,6 @@ export function computeMatchStats(game: BotObservation): MatchStats {
     if (event.blockedAction && event.actor) {
       totalBlocks++;
       inc(blocked, event.actor);
-    }
-
-    if (event.evidence === "claim" && event.actor) {
-      inc(claimed, event.actor);
     }
   }
 
@@ -138,15 +133,18 @@ export function computeMatchStats(game: BotObservation): MatchStats {
     });
   }
 
-  const claimKing = topOf(claimed);
-  if (claimKing) {
+  const bluffs = new Map<string, number>(
+    Object.entries(game.bluffs ?? {}).filter(([, count]) => count > 0),
+  );
+  const bluffKing = topOf(bluffs);
+  if (bluffKing) {
     awards.push({
-      id: "most_claims",
-      title: "Raja Klaim",
-      playerId: claimKing.id,
-      playerName: nameOf(claimKing.id),
-      value: claimKing.value,
-      summary: `${claimKing.value}× klaim peran`,
+      id: "most_bluffs",
+      title: "Pembohong Handal",
+      playerId: bluffKing.id,
+      playerName: nameOf(bluffKing.id),
+      value: bluffKing.value,
+      summary: `${bluffKing.value}× bluff`,
     });
   }
 

@@ -72,6 +72,7 @@ test("Steal menjelaskan pelaku, target, peran dan siapa yang merespons", async (
     await expect(guest.locator(".player-area .balance")).toContainText(
       "0 koin",
     );
+    await guest.getByRole("button", { name: "Lihat meja" }).click();
     await guest.getByRole("button", { name: "Menu meja" }).click();
     const menu = guest.getByRole("dialog", { name: "Menu meja" });
     await menu.getByText("Riwayat meja", { exact: true }).click();

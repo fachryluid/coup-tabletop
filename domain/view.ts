@@ -53,6 +53,7 @@ export function observe(g: Game, id: string) {
     paused: g.paused,
     loss: g.loss?.id,
     winner: g.winner,
+    bluffs: g.stage === "over" ? { ...(g.bluffs ?? {}) } : undefined,
     log: g.log.map((e) => ({ ...e })),
     canUndo: !!g.undo,
     canSwitch:
