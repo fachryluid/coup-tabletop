@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useState, useRef, useReducer, useCallback } from "react";
 import { io, type Socket } from "socket.io-client";
-import { windows, type Move, type Difficulty } from "../domain/model";
+import { windows, type Difficulty } from "../domain/model";
 import { MatchHistory } from "./match-history";
-import { rules } from "../domain/house-rules";
+import { ExtraRules } from "./extra-rules";
+import { ActionOverlay } from "./action-overlay";
+import { MatchOverOverlay } from "./match-over-overlay";
 import type { RoomView } from "../domain/view";
 import type { Command } from "../server/rooms";
 
@@ -13,205 +15,7 @@ import { Music } from "./music";
 import { initialPlayback, playback, type Line } from "./table-playback";
 import { tableDialogue } from "./table-dialogue";
 import { TableScene } from "./table-scene";
-import { Face } from "./cards";
-const explains: Record<string, string> = {
-  Income: "+1 koin",
-  "Foreign Aid": "+2 koin · bisa diblokir Duke",
-  Tax: "+3 koin · klaim Duke",
-  Exchange: "Tukar kartu · klaim Ambassador",
-  Coup: "7 koin · gugurkan satu influence",
-  Assassinate: "3 koin · klaim Assassin",
-  Steal: "Ambil hingga 2 koin · klaim Captain",
-  Guess: "Tebak peran · sekali per match",
-};
 type Reply = { ok: boolean; error?: string; code?: string; token?: string };
-function Moves({
-  room,
-  send,
-}: {
-  room: RoomView;
-  send: (cmd: Command) => void;
-}) {
-  const g = room.game!,
-    [chosen, choose] = useState(""),
-    [target, setTarget] = useState(""),
-    [kept, setKept] = useState<number[]>([]);
-  const moves = g.legal.filter((m) => m.kind === chosen);
-  const name = (id?: string) => room.seats.find((s) => s.id === id)?.name;
-  function label(m: Move) {
-    return [
-      m.kind === "Lose" ? "Gugurkan" : m.kind === "Prove" ? "Buktikan" : m.kind,
-      m.target && name(m.target),
-      m.role,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-  }
-  const initialSteal = g.action?.kind === "Steal" && g.stage === "challenge";
-  const kinds = [...new Set(g.legal.map((m) => m.kind))];
-  if (!kinds.length) return null;
-  if (g.stage === "guessAnswer") {
-    return (
-      <section className="action-rail">
-        <div className="choices">
-          {[true, false].map((answer) => (
-            <button
-              key={String(answer)}
-              onClick={() =>
-                send({ type: "play", move: { kind: "ConfirmGuess", answer } })
-              }
-            >
-              {answer ? "Jawab benar" : "Jawab salah"}
-            </button>
-          ))}
-        </div>
-      </section>
-    );
-  }
-  if (kinds.includes("Keep")) {
-    const options = g.legal.filter((m) => m.kind === "Keep");
-    const count = options[0].indices!.length;
-    const selected = options.find(
-      (m) =>
-        m.indices!.length === kept.length &&
-        m.indices!.every((i) => kept.includes(i)),
-    );
-    return (
-      <section className="action-rail">
-        <h2>Pilih {count} kartu untuk disimpan</h2>
-        <div className="exchange-cards">
-          {g.pool.map((role, i) => (
-            <button
-              key={i}
-              aria-label={role + ", kartu " + (i + 1)}
-              aria-pressed={kept.includes(i)}
-              disabled={!kept.includes(i) && kept.length >= count}
-              onClick={() =>
-                setKept(
-                  kept.includes(i) ? kept.filter((n) => n !== i) : [...kept, i],
-                )
-              }
-            >
-              <Face role={role} />
-              {kept.includes(i) && <span aria-hidden="true">✓</span>}
-            </button>
-          ))}
-        </div>
-        <button
-          className="primary"
-          disabled={!selected}
-          onClick={() => selected && send({ type: "play", move: selected })}
-        >
-          Simpan kartu ({kept.length}/{count})
-        </button>
-      </section>
-    );
-  }
-  if (chosen === "Guess") {
-    return (
-      <section className="action-rail">
-        <h2>
-          {target ? "Tebak peran " + name(target) : "Pilih lawan untuk Guess"}
-        </h2>
-        <div className="choices">
-          {target
-            ? moves
-                .filter((m) => m.target === target)
-                .map((m) => (
-                  <button
-                    key={m.role}
-                    onClick={() => send({ type: "play", move: m })}
-                  >
-                    {m.role}
-                  </button>
-                ))
-            : [...new Set(moves.map((m) => m.target!))].map((id) => (
-                <button key={id} onClick={() => setTarget(id)}>
-                  {name(id)}
-                </button>
-              ))}
-        </div>
-        <button onClick={() => (target ? setTarget("") : choose(""))}>
-          Kembali
-        </button>
-      </section>
-    );
-  }
-  return (
-    <section className="action-rail">
-      <h2>
-        {moves.length
-          ? "Pilih target · " + chosen
-          : g.stage === "turn"
-            ? "Pilih aksi Anda"
-            : g.stage === "claimResponse"
-              ? "Buktikan klaim atau gugurkan satu kartu Anda"
-              : g.stage === "loss"
-                ? "Pilih kartu Anda yang gugur"
-                : g.stage === "block"
-                  ? "Blok aksi atau pilih Pass"
-                  : g.stage === "taxResponse"
-                    ? "Tantang Tax, blok dengan Duke, atau pilih Pass"
-                    : kinds.includes("Block")
-                      ? "Tantang, blok aksi, atau pilih Pass"
-                      : "Tantang klaim atau pilih Pass"}
-      </h2>
-      <div className="choices">
-        {g.stage === "turn" && !moves.length
-          ? kinds.map((kind) => {
-              const group = g.legal.filter((m) => m.kind === kind);
-              return (
-                <button
-                  key={kind}
-                  onClick={() =>
-                    group[0].target
-                      ? choose(kind)
-                      : send({ type: "play", move: group[0] })
-                  }
-                >
-                  <b>{kind}</b>
-                  <small>{explains[kind]}</small>
-                </button>
-              );
-            })
-          : (moves.length ? moves : g.legal).map((m, i) => (
-              <button
-                aria-label={label(m)}
-                data-kind={m.kind}
-                key={i}
-                onClick={() => send({ type: "play", move: m })}
-              >
-                <b>{label(m)}</b>
-                {m.kind === "Pass" && (
-                  <small>
-                    {initialSteal
-                      ? "Biarkan lawan mengambil hingga 2 koin"
-                      : "Lewati kesempatan ini"}
-                  </small>
-                )}
-                {m.kind === "Challenge" && (
-                  <small>
-                    {initialSteal
-                      ? "Minta bukti kartu Captain"
-                      : "Minta bukti kartu"}
-                  </small>
-                )}
-                {m.kind === "Block" && (
-                  <small>
-                    {initialSteal
-                      ? "Saya mengaku sebagai " + m.role
-                      : "Coba batalkan aksi"}
-                  </small>
-                )}
-              </button>
-            ))}
-      </div>
-      {moves.length > 0 && (
-        <button onClick={() => choose("")}>Kembali ke aksi</button>
-      )}
-    </section>
-  );
-}
 export default function Table() {
   const sock = useRef<Socket | null>(null);
   const [presentation, dispatch] = useReducer(playback, initialPlayback);
@@ -276,6 +80,9 @@ export default function Table() {
     [amount, setAmount] = useState(""),
     [reason, setReason] = useState("");
   const [copied, setCopied] = useState(false);
+  const [renaming, setRenaming] = useState(false),
+    [nextName, setNextName] = useState("");
+  const [hiddenRevision, setHiddenRevision] = useState<number | null>(null);
   useEffect(() => {
     const socket = io({ autoConnect: false });
     sock.current = socket;
@@ -366,11 +173,11 @@ export default function Table() {
         setBusy(false);
         if (!r.ok) setError(r.error!);
         else if (cmd.type === "endMatch") drawer.current?.close();
+        else if (cmd.type === "rename") setRenaming(false);
       },
     );
   }
   const drawer = useRef<HTMLDialogElement>(null);
-  const [houseRules, setHouseRules] = useState<Record<string, boolean>>({});
   function enter(join: boolean) {
     if (!name.trim()) {
       setError("Masukkan nama pemain.");
@@ -380,9 +187,7 @@ export default function Table() {
     setError("");
     sock.current!.emit(
       "enter",
-      join
-        ? { type: "join", code, name }
-        : { type: "create", name, houseRules },
+      join ? { type: "join", code, name } : { type: "create", name },
       (r: Reply) => {
         setBusy(false);
         if (!r.ok) {
@@ -396,6 +201,19 @@ export default function Table() {
   }
   const host = room?.me === room?.host,
     g = room?.game;
+  const canAct =
+    !!room &&
+    !!g &&
+    g.legal.length > 0 &&
+    ((!frames.length && cursor === lines.length - 1) ||
+      (g.stage === "exchange" && g.turn === room.me));
+  const isMatchOver =
+    !!room &&
+    !!g &&
+    g.stage === "over" &&
+    !frames.length &&
+    cursor === lines.length - 1;
+  const actionHidden = !!room && hiddenRevision === room.revision;
   const standings = room && (
     <section className="standings">
       <h2>Klasemen sesi</h2>
@@ -567,7 +385,7 @@ export default function Table() {
         </b>
         <span>Coup Digital Tabletop</span>
         <div className="table-dock" role="group" aria-label="Kontrol tampilan">
-          {g && <FullscreenButton />}
+          <FullscreenButton />
           <Music />
           {room && online && sock.current && (
             <VoiceChat key={room.code + room.me} socket={sock.current} />
@@ -678,31 +496,6 @@ export default function Table() {
                       autoComplete="nickname"
                     />
                   </label>
-                  {menu === "create" && (
-                    <details className="house-options" open>
-                      <summary>Aturan tongkrongan</summary>
-                      <div className="rule-list">
-                        {Object.values(rules).map((rule) => (
-                          <label key={rule.id} className="setting">
-                            <span>
-                              {rule.name}
-                              <small>{rule.description}</small>
-                            </span>
-                            <input
-                              type="checkbox"
-                              checked={!!houseRules[rule.id]}
-                              onChange={(e) =>
-                                setHouseRules({
-                                  ...houseRules,
-                                  [rule.id]: e.target.checked,
-                                })
-                              }
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    </details>
-                  )}
                   {menu === "join" && (
                     <label>
                       Kode undangan
@@ -750,10 +543,16 @@ export default function Table() {
               )}
               {!g && (
                 <button
+                  type="button"
+                  className="icon-btn invite-copy-btn"
+                  data-copied={copied || undefined}
+                  aria-label={copied ? "Tautan disalin" : "Salin undangan"}
+                  title={copied ? "Tautan disalin" : "Salin tautan undangan"}
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(location.href);
                       setCopied(true);
+                      setTimeout(() => setCopied(false), 2400);
                     } catch {
                       setError(
                         "Salin alamat halaman ini untuk mengundang teman.",
@@ -761,7 +560,27 @@ export default function Table() {
                     }
                   }}
                 >
-                  {copied ? "Tautan disalin" : "Salin undangan"}
+                  <svg
+                    aria-hidden="true"
+                    width="19"
+                    height="19"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    {copied ? (
+                      <path d="M20 6 9 17l-5-5" />
+                    ) : (
+                      <>
+                        <rect x="9" y="9" width="13" height="13" rx="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </>
+                    )}
+                  </svg>
+                  {copied && <span className="copy-toast">Disalin</span>}
                 </button>
               )}
             </div>
@@ -777,32 +596,53 @@ export default function Table() {
                     moving={moving}
                     onDelivery={onDelivery}
                   >
-                    <div
-                      id="pilihan-meja"
-                      tabIndex={-1}
-                      inert={!!frames.length || cursor !== lines.length - 1}
-                    >
-                      {((!frames.length && cursor === lines.length - 1) ||
-                        (g.stage === "exchange" && g.turn === room.me)) && (
-                        <Moves key={room.revision} room={room} send={send} />
-                      )}
-                    </div>
-                    {g.stage === "over" && standings}
-                    {g.stage === "over" && host && !frames.length && (
-                      <button
-                        className="primary"
-                        onClick={() => send({ type: "again" })}
-                      >
-                        Main lagi
-                      </button>
+                    {canAct && actionHidden && (
+                      <div className="action-minimized-dock">
+                        <button
+                          type="button"
+                          className="primary action-reopen-btn"
+                          onClick={() => setHiddenRevision(null)}
+                        >
+                          <svg
+                            aria-hidden="true"
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M12 5v14M5 12h14" />
+                          </svg>
+                          <span>Pilih Aksi</span>
+                        </button>
+                      </div>
                     )}
-                    {g.stage === "over" && host && !frames.length && (
-                      <button
-                        className="primary"
-                        onClick={() => send({ type: "rematch" })}
-                      >
-                        Kembali ke lobi untuk rematch
-                      </button>
+                    {isMatchOver && actionHidden && (
+                      <div className="action-minimized-dock">
+                        <button
+                          type="button"
+                          className="primary action-reopen-btn"
+                          onClick={() => setHiddenRevision(null)}
+                        >
+                          <svg
+                            aria-hidden="true"
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M8 21h8m-4-4v4m-6-9a6 6 0 0 0 12 0V5H6v7Z" />
+                          </svg>
+                          <span>Lihat Klasemen</span>
+                        </button>
+                      </div>
                     )}
                   </TableScene>
                 )}
@@ -812,25 +652,147 @@ export default function Table() {
                       Kursi <small>{room.seats.length} / 6</small>
                     </h2>
                     {room.seats.map((s) => {
+                      const isMe = s.id === room.me;
                       return (
                         <div className="seat" key={s.id}>
-                          <div>
-                            <b>{s.name}</b>
-                            <small>
-                              {[
-                                s.id === room.me ? "Anda" : "",
-                                s.id === room.host ? "Host" : "",
-                                s.difficulty
-                                  ? "Computer · " + s.difficulty
-                                  : "",
-                                !s.online ? "Offline" : "",
-                              ]
-                                .filter(Boolean)
-                                .join(" · ")}
-                            </small>
+                          <div className="seat-identity">
+                            {isMe && renaming ? (
+                              <form
+                                id="rename-seat-form"
+                                className="rename-form"
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  const trimmed = nextName.trim();
+                                  if (!trimmed) {
+                                    setError("Masukkan nama pemain.");
+                                    return;
+                                  }
+                                  if (trimmed === s.name) {
+                                    setRenaming(false);
+                                    return;
+                                  }
+                                  send({ type: "rename", name: trimmed });
+                                }}
+                              >
+                                <input
+                                  aria-label="Nama baru"
+                                  className="rename-field"
+                                  placeholder="Nama panggilan baru"
+                                  autoFocus
+                                  required
+                                  maxLength={32}
+                                  value={nextName}
+                                  onChange={(e) => setNextName(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Escape") {
+                                      setRenaming(false);
+                                      setError("");
+                                    }
+                                  }}
+                                />
+                              </form>
+                            ) : (
+                              <>
+                                <b>{s.name}</b>
+                                <small>
+                                  {[
+                                    isMe ? "Anda" : "",
+                                    s.id === room.host ? "Host" : "",
+                                    s.difficulty
+                                      ? "Computer · " + s.difficulty
+                                      : "",
+                                    !s.online ? "Offline" : "",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </small>
+                              </>
+                            )}
                           </div>
+                          {isMe && !g && (
+                            <div className="seat-actions">
+                              {renaming ? (
+                                <>
+                                  <button
+                                    key="rename-save"
+                                    type="submit"
+                                    form="rename-seat-form"
+                                    className="icon-btn rename-save-btn"
+                                    aria-label="Simpan"
+                                    title="Simpan nama"
+                                  >
+                                    <svg
+                                      aria-hidden="true"
+                                      width="17"
+                                      height="17"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2.4"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                    >
+                                      <path d="M20 6 9 17l-5-5" />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    key="rename-cancel"
+                                    type="button"
+                                    className="icon-btn"
+                                    aria-label="Batal"
+                                    title="Batal ganti nama"
+                                    onClick={() => {
+                                      setRenaming(false);
+                                      setError("");
+                                    }}
+                                  >
+                                    <svg
+                                      aria-hidden="true"
+                                      width="17"
+                                      height="17"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2.2"
+                                      strokeLinecap="round"
+                                    >
+                                      <path d="M18 6 6 18M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  key="rename-open"
+                                  type="button"
+                                  className="icon-btn"
+                                  aria-label="Ganti nama"
+                                  title="Ganti nama"
+                                  onClick={() => {
+                                    setError("");
+                                    setNextName(s.name);
+                                    setRenaming(true);
+                                  }}
+                                >
+                                  <svg
+                                    aria-hidden="true"
+                                    width="17"
+                                    height="17"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M12 20h9" />
+                                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          )}
                           {host && !g && s.difficulty && (
-                            <div>
+                            <div className="seat-actions">
                               <select
                                 aria-label={"Level " + s.name}
                                 value={s.difficulty}
@@ -849,11 +811,30 @@ export default function Table() {
                                 ))}
                               </select>
                               <button
+                                type="button"
+                                className="icon-btn danger-icon-btn"
+                                aria-label="Hapus"
+                                title={"Hapus " + s.name}
                                 onClick={() =>
                                   send({ type: "remove", id: s.id })
                                 }
                               >
-                                Hapus
+                                <svg
+                                  aria-hidden="true"
+                                  width="17"
+                                  height="17"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M3 6h18" />
+                                  <path d="M8 6V4h8v2" />
+                                  <path d="M19 6l-1 14H6L5 6" />
+                                  <path d="M10 11v6m4-6v6" />
+                                </svg>
                               </button>
                             </div>
                           )}
@@ -862,32 +843,64 @@ export default function Table() {
                     })}
                     {!g && host && (
                       <button
+                        type="button"
+                        className="with-icon lobby-add-bot-btn"
                         disabled={room.seats.length === 6}
                         onClick={() => send({ type: "add" })}
                       >
-                        Tambah computer
+                        <svg
+                          aria-hidden="true"
+                          width="17"
+                          height="17"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect x="4" y="8" width="16" height="12" rx="2" />
+                          <path d="M12 4v4M9 13h.01M15 13h.01M9 17h6" />
+                        </svg>
+                        <span>Tambah computer</span>
                       </button>
                     )}
                     {!g && !host && (
-                      <button onClick={() => send({ type: "leave" })}>
-                        Tinggalkan kursi
+                      <button
+                        type="button"
+                        className="with-icon"
+                        onClick={() => send({ type: "leave" })}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          width="17"
+                          height="17"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                          <path d="m16 17 5-5-5-5M21 12H9" />
+                        </svg>
+                        <span>Tinggalkan kursi</span>
                       </button>
                     )}
                   </section>
                 )}
               </div>
               {!g && (
-                <section>
-                  <h2>Aturan tongkrongan</h2>
-                  <p>
-                    {Object.values(rules)
-                      .filter((rule) => room.config[rule.id])
-                      .map((rule) => rule.name)
-                      .join(" · ") || "Aturan klasik"}
-                  </p>
+                <section className="lobby-rules-section">
+                  <ExtraRules
+                    values={room.config}
+                    editable={host}
+                    onSave={(values) => send({ type: "rules", values })}
+                  />
                   {host ? (
                     <button
-                      className="primary"
+                      className="primary lobby-start-btn"
                       disabled={room.seats.length < 2}
                       onClick={() => send({ type: "start" })}
                     >
@@ -902,6 +915,27 @@ export default function Table() {
           </>
         )}
       </fieldset>
+      {canAct && !actionHidden && (
+        <ActionOverlay
+          key={room.revision}
+          room={room}
+          clock={clock}
+          send={send}
+          onHide={() => setHiddenRevision(room.revision)}
+          inert={
+            !online || busy || !!frames.length || cursor !== lines.length - 1
+          }
+        />
+      )}
+      {isMatchOver && !actionHidden && (
+        <MatchOverOverlay
+          key={"over-" + room.matchRevision + "-" + room.revision}
+          room={room}
+          host={host}
+          send={send}
+          onHide={() => setHiddenRevision(room.revision)}
+        />
+      )}
       {room && (
         <dialog
           ref={drawer}

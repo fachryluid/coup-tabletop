@@ -43,12 +43,11 @@ export type Move = {
     | "Challenge"
     | "Block"
     | "Lose"
-    | "Keep"
-    | "ConfirmGuess";
+    | "Keep";
   target?: string;
   role?: Role;
+  slot?: number;
   indices?: number[];
-  answer?: boolean;
 };
 export const stages = [
   "turn",
@@ -59,7 +58,6 @@ export const stages = [
   "claimResponse",
   "loss",
   "exchange",
-  "guessAnswer",
   "over",
 ] as const;
 export type PhaseStamp = { actionId: string; phase: Stage };
@@ -67,9 +65,14 @@ export type Stage = (typeof stages)[number];
 export type Continuation = "finish" | "resolve";
 export type Entry = {
   revealedGuess?: Role;
+  proofSlot?: number;
   discarded?: Role;
   blockedAction?: Action;
-  deckMove?: { seat: string; kind: "drawTwo" | "returnTwo" | "replace" };
+  deckMove?: {
+    seat: string;
+    kind: "drawTwo" | "returnTwo" | "replace";
+    slot?: number;
+  };
   speech?: { by: string; words: string };
   text: string;
   actor?: string;

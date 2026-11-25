@@ -31,24 +31,45 @@ it.each([2, 3, 4, 5, 6])("deal at %i seats conserves all copies", (size) => {
       ),
     ).toHaveLength(3);
 });
-it("Guess checks living cards and reveals only one matching copy; rematch resets usage", () => {
+it("Guess checks living cards at specific slot and reveals only one matching copy; rematch resets usage", () => {
   let g = deal(seats, { ...defaults, one_time_guess: true }, rng);
   g.players[1].hand = ["Duke", "Duke"];
-  g = play(g, "A", { kind: "Guess", target: "B", role: "Duke" }, 0, rng);
-  g = play(g, "B", { kind: "ConfirmGuess", answer: true }, 1, rng);
+  g = play(
+    g,
+    "A",
+    { kind: "Guess", target: "B", slot: 1, role: "Duke" },
+    0,
+    rng,
+  );
   expect(g.players[1].hand).toEqual(["Duke"]);
   expect(g.players[1].revealed).toEqual(["Duke"]);
   g.players[0].revealed = ["Assassin"];
   g.players[0].hand = ["Captain"];
-  g = play(g, "B", { kind: "Guess", target: "A", role: "Assassin" }, 0, rng);
-  g = play(g, "A", { kind: "ConfirmGuess", answer: false }, 1, rng);
-  expect(g.loss?.id).toBe("B");
+  g = play(
+    g,
+    "B",
+    { kind: "Guess", target: "A", slot: 0, role: "Assassin" },
+    0,
+    rng,
+  );
+  // B has only 1 card left ("Duke"), so wrong guess immediately auto-discards it and eliminates B
+  expect(g.loss).toBeUndefined();
+  expect(g.players[1].hand).toEqual([]);
+  expect(g.players[1].revealed).toEqual(["Duke", "Duke"]);
   expect(
     g.log
       .filter((entry) => entry.revealedGuess)
-      .map((entry) => [entry.speech?.by, entry.revealedGuess]),
-  ).toEqual([["B", "Duke"]]);
-  g = play(g, "B", { kind: "Lose", role: "Duke" }, 0, rng);
+      .map((entry) => [entry.speech?.by, entry.revealedGuess, entry.proofSlot]),
+  ).toEqual([["B", "Duke", 1]]);
+  expect(
+    g.log.some(
+      (e) =>
+        e.actor === "A" &&
+        e.evidence === "proof" &&
+        e.role === "Captain" &&
+        e.deckMove?.kind === "replace",
+    ),
+  ).toBe(true);
   const fresh = deal(seats, g.config, rng);
   expect(fresh.players.every((p) => !p.used)).toBe(true);
 });
@@ -66,38 +87,37 @@ it.each(["easy", "normal", "hard"] as Difficulty[])(
     expect(choose("B")).toBeUndefined();
     expect(choose("C")).toBeUndefined();
     g = play(g, "A", { kind: "Pass" }, 3, rng);
-    g = play(g, "B", { kind: "Guess", role: "Duke", target: "C" }, 4, rng);
-    expect(choose("A")).toBeUndefined();
-    expect(choose("B")).toBeUndefined();
-    expect(choose("C")).toEqual({
-      kind: "ConfirmGuess",
-      answer: g.players[2].hand.includes("Duke"),
-    });
-    expect(() =>
-      play(g, "A", { kind: "ConfirmGuess", answer: false }, 5, rng),
-    ).toThrow();
+    g = play(
+      g,
+      "B",
+      { kind: "Guess", role: "Duke", target: "C", slot: 0 },
+      4,
+      rng,
+    );
     expect(
-      play(g, "C", choose("C")!, 5, rng).log.find(
+      g.log.find(
         (e) => e.speech?.by === "C" && e.speech.words.startsWith("Tebakan"),
       ),
     ).toBeDefined();
+    if (g.stage === "loss") {
+      expect(g.loss?.id).toBe("B");
+      expect(choose("A")).toBeUndefined();
+      expect(choose("C")).toBeUndefined();
+      expect(choose("B")?.kind).toBe("Lose");
+    } else {
+      expect(g.stage).toBe("turn");
+      expect(g.turn).toBe("C");
+    }
   },
 );
 it("game-ending guess takes precedence over next turn", () => {
   const g = deal(seats.slice(0, 2), { ...defaults, one_time_guess: true }, rng);
   g.players[1].hand = ["Duke"];
-  const guess = play(
+  const result = play(
     g,
     "A",
-    { kind: "Guess", role: "Duke", target: "B" },
+    { kind: "Guess", role: "Duke", target: "B", slot: 0 },
     0,
-    rng,
-  );
-  const result = play(
-    guess,
-    "B",
-    { kind: "ConfirmGuess", answer: true },
-    1,
     rng,
   );
   expect(result.winner).toBe("A");
@@ -135,7 +155,7 @@ it.each(["easy", "normal", "hard"] as Difficulty[])(
     g.players[2].hand = [];
     g.players[2].revealed = ["Captain", "Assassin"];
     const v = observe(g, "A");
-    const guess: Move = { kind: "Guess", role: "Duke", target: "B" };
+    const guess: Move = { kind: "Guess", role: "Duke", target: "B", slot: 0 };
     expect(favor(v, guess)).toEqual(guess);
     g = play(g, "A", { kind: "Tax" }, 0, rng);
     const block: Move = { kind: "Block", role: "Duke" };

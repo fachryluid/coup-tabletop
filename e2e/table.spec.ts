@@ -4,12 +4,14 @@ test("solo vs computer sampai game over dan rematch", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Buat meja privat" }).click();
   await page.getByLabel("Nama pemain").fill("Rani");
+  await page.getByRole("button", { name: "Buat room" }).click();
+  await page.getByRole("button", { name: "Tambahkan aturan lainnya" }).click();
   for (const label of [/One-Time Guess/, /Duke Blocks Tax/]) {
     const toggle = page.getByLabel(label);
     await toggle.click();
     await expect(toggle).toBeChecked();
   }
-  await page.getByRole("button", { name: "Buat room" }).click();
+  await page.getByRole("button", { name: "Simpan aturan" }).click();
   const add = page.getByRole("button", { name: "Tambah computer" });
   await add.click();
   await page.getByRole("button", { name: "Hapus" }).click();
@@ -23,7 +25,7 @@ test("solo vs computer sampai game over dan rematch", async ({ page }) => {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  const rematch = page.getByRole("button", { name: /rematch/ });
+  const rematch = page.getByRole("button", { name: "Kembali ke Lobi" });
   for (let i = 0; i < 150; i++) {
     const choices = page.locator(".choices button");
     await choices.first().or(rematch).waitFor();
@@ -32,28 +34,7 @@ test("solo vs computer sampai game over dan rematch", async ({ page }) => {
       .locator("[data-revision]")
       .getAttribute("data-revision");
     const coup = choices.filter({ hasText: /^Coup/ }).first();
-    const reply = page.getByRole("button", { name: "Jawab benar" });
-    if (await reply.count()) {
-      const declaration = await page
-        .locator(".opponent blockquote")
-        .innerText();
-      const role = /memegang (Duke|Captain|Ambassador|Contessa|Assassin)/.exec(
-        declaration,
-      )?.[1];
-      expect(role).toBeTruthy();
-      const hit = await page
-        .locator(".private-hand .hand-card img")
-        .evaluateAll(
-          (images, guessed) =>
-            images.some((image) =>
-              image.getAttribute("alt")?.startsWith(guessed + " ·"),
-            ),
-          role!,
-        );
-      await page
-        .getByRole("button", { name: hit ? "Jawab benar" : "Jawab salah" })
-        .click();
-    } else if (await coup.count()) {
+    if (await coup.count()) {
       await coup.click();
       await choices.filter({ hasText: /Coup · Computer/ }).click();
     } else {
@@ -81,13 +62,13 @@ test("solo vs computer sampai game over dan rematch", async ({ page }) => {
     "",
   );
   await expect(
-    page.locator(".arena .standings tr").filter({ hasText: winner }),
+    page.locator(".over-overlay .standings tr").filter({ hasText: winner }),
   ).toContainText("1");
   await page.getByRole("button", { name: "Main lagi", exact: true }).click();
   await expect(page.locator("blockquote")).toContainText(
     winner + " mendapat giliran pertama",
   );
-  await expect(page.locator(".arena .standings")).toHaveCount(0);
+  await expect(page.locator(".over-overlay")).toHaveCount(0);
 });
 test("dua perangkat berbagi block, challenge, dan pilihan influence", async ({
   page,

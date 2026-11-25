@@ -109,15 +109,16 @@ Syarat teknis:
 
 ### House Rule 01 — One-Time Guess (`one_time_guess`)
 
-**Sumber aturan pengguna:** Setiap pemain memiliki **tepat satu kesempatan** menebak kartu milik **pemain lain** sepanjang satu pertandingan. Jika tebakan benar, **satu kartu/influence hidup** target yang cocok dengan karakter tebakan mati; jika salah, **satu kartu/influence hidup penebak** mati. Tebakan tidak mengharuskan target mengungkap seluruh tangannya.
+**Sumber aturan pengguna (diperbarui):** Setiap pemain memiliki **tepat satu kesempatan** menebak **kartu spesifik** (sebelah kiri atau sebelah kanan bila lawan punya 2 kartu, atau kartu tersisa bila tinggal 1) milik **pemain lain** sepanjang satu pertandingan. Tidak ada aksi konfirmasi tambahan dari target; kartu yang ditebak langsung dibuka untuk membuktikan tebakan. Jika tebakan benar, kartu yang ditebak mati; jika salah, kartu yang ditebak diganti dari kocokan dek dan **satu kartu/influence hidup penebak** mati.
 
 **Kontrak implementasi:**
 - Aktif hanya saat `one_time_guess = true`; default OFF. Kesempatan dipakai maksimal **sekali per pemain per match**, bukan sekali per giliran, dan tidak di-reset saat reconnect; di-reset saat rematch.
-- Semua 5 karakter klasik dapat dipilih sebagai tebakan; target harus pemain **lain yang masih hidup**. Pemeriksaan cocok berdasarkan **kartu influence yang masih hidup**, bukan kartu yang sudah terbuka/hilang.
-- Kebenaran tebakan dan pemilihan kartu yang gugur ditentukan oleh server, bukan klaim pemain. Jika benar, gugurkan **satu** kartu target dengan karakter yang ditebak; jika salah, penebak memilih **satu** kartu miliknya yang masih hidup untuk digugurkan (bot memilih sesuai policy).
-- Gunakan fase `GUESS_RESOLUTION` / `INFLUENCE_SELECTION` sesuai perlu; catat actor, target, guessed role, outcome, influence yang terbuka, dan sisa kesempatan. Pastikan informasi kartu lain tidak bocor.
-- **Asumsi sementara untuk menghindari blocking development:** tebakan adalah **aksi pada giliran penebak** yang menggantikan aksi Coup biasa; tidak memerlukan koin, tidak dapat di-Challenge atau di-Block. Konsumsi kesempatan terjadi saat command valid diterima secara atomik, termasuk jika tebakan salah. Detail ini dapat diperbarui jika pemilik aturan tongkrongan mengklarifikasi.
+- Semua 5 karakter klasik dapat dipilih sebagai tebakan bersama posisi kartu spesifik (`slot`: 0 = kiri, 1 = kanan); target harus pemain **lain yang masih hidup**. Pemeriksaan cocok berdasarkan **kartu influence hidup pada slot yang ditebak**, bukan kartu lain di tangan target atau kartu yang sudah terbuka/hilang.
+- Kebenaran tebakan ditentukan langsung oleh server tanpa fase konfirmasi dari target. Jika benar, kartu pada slot tersebut dibuka lalu gugur; jika salah, kartu pada slot tersebut dibuka untuk membuktikan tebakan salah, dikembalikan ke dek yang dikocok ulang dan diganti kartu baru, lalu penebak memilih **satu** kartu miliknya yang masih hidup untuk digugurkan (bot memilih sesuai policy).
+- Catat actor, target, slot kartu, guessed role, outcome, kartu yang dibuka, gerakan penggantian dek (bila salah), dan sisa kesempatan. Pastikan informasi kartu lain tidak bocor.
+- Tebakan adalah **aksi pada giliran penebak** yang menggantikan aksi Coup biasa; tidak memerlukan koin, tidak dapat di-Challenge atau di-Block. Konsumsi kesempatan terjadi saat command valid diterima secara atomik, termasuk jika tebakan salah.
 - Saat OFF, tidak muncul tombol Guess dan engine menolak command Guess; tidak ada kesempatan tebak di pertandingan tersebut.
+- Istilah UI untuk modul aturan tambahan adalah **Aturan lainnya**, diatur ON/OFF oleh host **di lobi** sebelum pertandingan dimulai (tidak ditampilkan di formulir buat meja; terkunci selama pertandingan berlangsung).
 
 ### House Rule 02 — Duke Blocks Tax (`duke_blocks_tax`)
 
@@ -151,13 +152,13 @@ Menu awal menawarkan buat meja atau masuk dengan kode. Tautan undangan langsung 
 
 Saat Steal atau Assassinate, hanya target yang dapat menantang atau memblokir. Setiap klaim blok hanya dapat ditantang oleh pemilik aksi awal. Challenge, semua Block yang sah, dan Pass tersedia bersamaan. Pass menutup kesempatan pemain itu untuk memblokir. Saat ditantang, hanya pemilik klaim aksi atau blok memilih untuk menunjukkan kartu hidup yang cocok dan menggantinya, atau menggugurkan satu kartu hidup pilihannya. Mengalah tidak membuka kartu lain. Setiap Challenge terhadap klaim aksi maupun blok membatalkan aksi asal. Jika klaim dilepas, pemilik klaim kehilangan satu influence. Jika klaim dibuktikan, penantang kehilangan satu influence. Biaya deklarasi yang telah dibayar tetap terpakai.
 
-Bentara Istana adalah narator sistem dengan potret dan popup sendiri. Pada Guess benar, satu kartu yang cocok ditunjukkan lebih dahulu, lalu pemilik kartu mengakui tebakan sebelum kartu gugur. Pada Guess salah, identitas kartu target tetap privat. Hanya target menerima pilihan Benar atau Salah. Manusia dan bot mengirim nilai jawaban melalui command yang sama. Jawaban yang tidak sesuai kartu hidup ditolak dan target tetap dapat menjawab. Bentara menyampaikan hasil terverifikasi sebelum pengumuman kehilangan influence. Server menentukan benar atau salah berdasarkan kartu hidup saat konfirmasi.
+Bentara Istana adalah narator sistem dengan potret dan popup sendiri. Pada Guess, kartu target pada posisi yang ditebak (kiri/kanan) langsung dibuka sebagai bukti tanpa aksi tambahan dari target. Bila tebakan benar, kartu itu gugur; bila salah, kartu itu dikembalikan dan diganti dari kocokan dek lalu penebak memilih kartu miliknya yang gugur. Bentara menyampaikan hasil terverifikasi sebelum pengumuman kehilangan influence.
 
 ## 8. Challenge & Block — Hybrid (Keputusan Final Model Interaksi)
 
 **Keputusan:** mode **Hybrid (C)**. **Default Response Timer OFF**; jika host memilih **ON**, batas waktunya **30 detik untuk setiap response window**. Host memilih **Response Timer ON/OFF** sebelum memulai pertandingan. Pilihan dikunci selama pertandingan dan terlihat oleh semua pemain. Timer merupakan **pengaturan gameplay**, bukan house rule khusus.
 
-Untuk Challenge terhadap aksi Steal atau Assassinate, hanya target hidup yang masuk daftar respons. Pemain lain tidak harus Pass. Tax dan Exchange tetap membuka Challenge bagi lawan hidup. Challenge terhadap klaim blok adalah jendela tersendiri dengan peserta sesuai aturan blok yang sudah berlaku.
+Untuk Challenge terhadap aksi Steal atau Assassinate, hanya target hidup yang masuk daftar respons. Pemain lain tidak harus Pass. Tax, Foreign Aid, dan Exchange membuka kesempatan intervensi secara **bergantian searah jarum jam** mulai dari pemain hidup tepat di sebelah pelaku aksi, sehingga pilihan aksi hanya tampil pada giliran pemain yang bersangkutan. Challenge terhadap klaim blok adalah jendela tersendiri dengan peserta sesuai aturan blok yang sudah berlaku.
 
 ### Timer ON
 

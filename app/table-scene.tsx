@@ -21,12 +21,6 @@ function turnStatus(room: RoomView, clock: number) {
         ? "Anda wajib melakukan Coup"
         : "Anda memilih aksi"
       : "Giliran " + name(g.turn);
-  if (g.stage === "guessAnswer")
-    return (
-      (g.action?.target === room.me ? "Anda" : name(g.action?.target)) +
-      " menjawab tebakan " +
-      name(g.turn)
-    );
   if (g.stage === "claimResponse")
     return (
       (g.pending.includes(room.me) ? "Anda" : name(g.pending[0])) +
@@ -40,9 +34,8 @@ function turnStatus(room: RoomView, clock: number) {
     return (
       (g.turn === room.me ? "Anda" : name(g.turn)) + " memilih kartu Exchange"
     );
-  const who = g.pending.includes(room.me)
-    ? "Anda"
-    : g.pending.map(name).join(", ");
+  const active = g.pending[0];
+  const who = active === room.me ? "Anda" : name(active);
   const action =
     g.action?.kind +
     " " +
@@ -139,27 +132,26 @@ export function TableScene({
                 className={"opponent" + (!p.influence ? " eliminated" : "")}
               >
                 <div className="fan">
-                  {Array.from({ length: p.influence }, (_, i) => (
-                    <span
-                      key={i}
-                      data-live-card=""
-                      data-proof={
-                        i === 0 &&
-                        dialogue.proofSeat === p.id &&
-                        dialogue.activeProof
-                          ? true
-                          : undefined
-                      }
-                    >
-                      {i === 0 &&
+                  {Array.from({ length: p.influence }, (_, i) => {
+                    const proofIndex = dialogue.proofSlot ?? 0;
+                    const isProof =
+                      i === proofIndex &&
                       dialogue.proofSeat === p.id &&
-                      dialogue.activeProof ? (
-                        <Face role={dialogue.activeProof} />
-                      ) : (
-                        <Back />
-                      )}
-                    </span>
-                  ))}
+                      !!dialogue.activeProof;
+                    return (
+                      <span
+                        key={i}
+                        data-live-card=""
+                        data-proof={isProof || undefined}
+                      >
+                        {isProof && dialogue.activeProof ? (
+                          <Face role={dialogue.activeProof} />
+                        ) : (
+                          <Back />
+                        )}
+                      </span>
+                    );
+                  })}
                   {exchangeCards(p.id)}
                   {p.revealed.map((r, i) => (
                     <span key={i} className="fallen" title={"Gugur · " + r}>
@@ -227,6 +219,9 @@ export function TableScene({
             fallen={me.revealed}
             proof={
               dialogue.proofSeat === room.me ? dialogue.activeProof : undefined
+            }
+            proofSlot={
+              dialogue.proofSeat === room.me ? dialogue.proofSlot : undefined
             }
           />
         </div>

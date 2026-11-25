@@ -31,10 +31,12 @@ export function Hand({
   roles,
   fallen,
   proof,
+  proofSlot,
 }: {
   roles: Role[];
   fallen: Role[];
   proof?: Role;
+  proofSlot?: number;
 }) {
   const [open, select] = useState<number | null>(null);
   return (
@@ -44,7 +46,11 @@ export function Hand({
           key={role + i}
           data-live-card=""
           data-proof={
-            (role === proof && roles.indexOf(role) === i) || undefined
+            (proof !== undefined &&
+              (proofSlot !== undefined
+                ? i === proofSlot
+                : role === proof && roles.indexOf(role) === i)) ||
+            undefined
           }
           className="hand-card"
           aria-expanded={open === i}

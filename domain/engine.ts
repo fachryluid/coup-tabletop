@@ -14,6 +14,15 @@ import { oneTimeGuess } from "./house-rules";
 export const player = (g: Game, id: string) =>
   g.players.find((p) => p.id === id)!;
 const living = (g: Game) => g.players.filter((p) => p.hand.length);
+function clockwiseOthers(g: Game, fromId: string): string[] {
+  const start = g.players.findIndex((p) => p.id === fromId);
+  const ids: string[] = [];
+  for (let i = 1; i < g.players.length; i++) {
+    const q = g.players[(start + i) % g.players.length];
+    if (q.hand.length) ids.push(q.id);
+  }
+  return ids;
+}
 const target = (g: Game) =>
   g.action?.target ? player(g, g.action.target) : undefined;
 function blockRoles(g: Game): Role[] {
@@ -33,12 +42,10 @@ export function eligibleResponders(g: Game): string[] {
   switch (g.stage) {
     case "loss":
       return [g.loss!.id];
-    case "guessAnswer":
-      return [g.action!.target!];
     case "exchange":
       return [g.turn];
     default:
-      return [...g.pending];
+      return windows.includes(g.stage) ? g.pending.slice(0, 1) : [...g.pending];
   }
 }
 export function legal(g: Game, id: string): Move[] {
@@ -46,24 +53,20 @@ export function legal(g: Game, id: string): Move[] {
   if (!p?.hand.length || g.paused !== null) return [];
   if (g.stage !== "turn" && !eligibleResponders(g).includes(id)) return [];
   if (g.stage === "loss" || g.stage === "claimResponse") {
-    const moves: Move[] = [...new Set(p.hand)].map((role) => ({
-      kind: "Lose",
-      role,
-    }));
-    if (g.stage === "claimResponse") {
-      const role =
-        g.blocker?.role ?? claims[g.action!.kind as keyof typeof claims]!;
-      if (p.hand.includes(role)) moves.unshift({ kind: "Prove", role });
-    }
+    const claimed =
+      g.stage === "claimResponse"
+        ? (g.blocker?.role ?? claims[g.action!.kind as keyof typeof claims]!)
+        : undefined;
+    const moves: Move[] = [...new Set(p.hand)]
+      .filter((role) => role !== claimed)
+      .map((role) => ({
+        kind: "Lose",
+        role,
+      }));
+    if (claimed && p.hand.includes(claimed))
+      moves.unshift({ kind: "Prove", role: claimed });
     return moves;
   }
-  if (g.stage === "guessAnswer")
-    return [
-      {
-        kind: "ConfirmGuess",
-        answer: oneTimeGuess.matches(p, g.action!.role!),
-      },
-    ];
   if (g.stage === "exchange") {
     return g.pool.flatMap((_, i) =>
       p.hand.length === 1
@@ -134,9 +137,17 @@ function open(g: Game, stage: Stage, ids: string[], now: number) {
     deadline: g.config.timer ? now + 30000 : null,
   });
 }
-function reveal(g: Game, id: string, role: Role, spoken = false) {
+function reveal(
+  g: Game,
+  id: string,
+  role: Role,
+  spoken = false,
+  slot?: number,
+) {
   const p = player(g, id);
-  p.hand.splice(p.hand.indexOf(role), 1);
+  const index =
+    slot !== undefined && p.hand[slot] === role ? slot : p.hand.indexOf(role);
+  p.hand.splice(index, 1);
   p.revealed.push(role);
   record(g, {
     ...(spoken
@@ -172,6 +183,11 @@ function reveal(g: Game, id: string, role: Role, spoken = false) {
   return false;
 }
 function lose(g: Game, id: string, next: Continuation) {
+  const p = player(g, id);
+  if (p.hand.length === 1) {
+    if (!reveal(g, id, p.hand[0], true)) advance(g, next);
+    return;
+  }
   Object.assign(g, {
     stage: "loss",
     loss: { id, next },
@@ -255,13 +271,22 @@ export function closeWindow(state: Game, now: number, host?: string) {
   )
     throw Error("Fase tidak bisa ditutup.");
   const g = structuredClone(state);
-  record(g, {
-    text:
-      (host ?? "Timer") +
-      " menutup fase. Pass: " +
-      g.pending.map((id) => player(g, id).name).join(", "),
-  });
-  close(g);
+  if (host) {
+    record(g, {
+      text:
+        host +
+        " menutup fase. Pass: " +
+        g.pending.map((id) => player(g, id).name).join(", "),
+    });
+    close(g);
+  } else {
+    const timedOut = g.pending.shift()!;
+    record(g, {
+      text: "Timer menutup fase. Pass: " + player(g, timedOut).name,
+    });
+    if (!g.pending.length) close(g);
+    else g.deadline = now + 30000;
+  }
   return g;
 }
 export function play(
@@ -276,37 +301,16 @@ export function play(
   const m = legal(state, id).find(
     (x) =>
       x.kind === request.kind &&
-      x.answer === request.answer &&
       x.role === request.role &&
       x.target === request.target &&
+      x.slot === request.slot &&
       JSON.stringify(x.indices) === JSON.stringify(request.indices),
   );
   if (!m) throw Error("Pilihan tidak sah untuk fase ini.");
   const g = structuredClone(state),
     p = player(g, id);
   g.undo = undefined;
-  if (g.stage === "guessAnswer") {
-    const guessed = g.action!.role!;
-    const hit = oneTimeGuess.matches(p, guessed);
-    const guesser = player(g, g.turn);
-    const words = hit
-      ? "Tebakan " + guesser.name + " benar. Saya memegang " + guessed + "."
-      : "Tebakan " +
-        guesser.name +
-        " salah. Saya tidak memegang " +
-        guessed +
-        ".";
-    record(g, {
-      text: p.name + ": " + words,
-      speech: { by: id, words },
-      revealedGuess: hit ? guessed : undefined,
-    });
-    record(g, {
-      text: "Tebakan " + guesser.name + (hit ? " benar." : " salah."),
-    });
-    if (!hit) lose(g, g.turn, "finish");
-    else if (!reveal(g, id, guessed)) finish(g);
-  } else if (g.stage === "loss") {
+  if (g.stage === "loss") {
     const next = g.loss!.next;
     g.loss = undefined;
     if (!reveal(g, id, m.role!, true)) advance(g, next);
@@ -330,6 +334,7 @@ export function play(
     });
     g.pending = g.pending.filter((x) => x !== id);
     if (!g.pending.length) close(g);
+    else if (g.config.timer) g.deadline = now + 30000;
   } else if (m.kind === "Block") {
     g.blocker = { id, role: m.role! };
     record(g, {
@@ -355,10 +360,21 @@ export function play(
       },
       text: p.name + " menantang " + claimant.name + ".",
     });
-    g.stage = "claimResponse";
-    g.pending = [claimant.id];
-    g.challenger = id;
-    g.deadline = null;
+    if (claimant.hand.length === 1 && !claimant.hand.includes(role)) {
+      record(g, {
+        text:
+          claimant.name +
+          " gagal membuktikan klaim. " +
+          g.action!.kind +
+          " dibatalkan.",
+      });
+      if (!reveal(g, claimant.id, claimant.hand[0], true)) finish(g);
+    } else {
+      g.stage = "claimResponse";
+      g.pending = [claimant.id];
+      g.challenger = id;
+      g.deadline = null;
+    }
   } else if (g.stage === "claimResponse") {
     const challenger = player(g, g.challenger!);
     g.challenger = undefined;
@@ -392,7 +408,8 @@ export function play(
         actor: id,
         role,
         evidence: "proof",
-        deckMove: { seat: id, kind: "replace" },
+        proofSlot: slot,
+        deckMove: { seat: id, kind: "replace", slot },
       });
       lose(g, challenger.id, "finish");
     } else {
@@ -414,16 +431,26 @@ export function play(
     if (m.kind === "Coup") p.coins -= 7;
     if (m.kind === "Assassinate") p.coins -= 3;
     const role = claims[m.kind as keyof typeof claims];
+    const targetPlayer = m.target ? player(g, m.target) : undefined;
     record(g, {
       speech: {
         by: id,
-        words: declaration(m, m.target ? player(g, m.target).name : undefined),
+        words: declaration(m, targetPlayer?.name, targetPlayer?.hand.length),
       },
       text:
         p.name +
         " memilih " +
         m.kind +
-        (m.target ? " → " + player(g, m.target).name : "") +
+        (targetPlayer ? " → " + targetPlayer.name : "") +
+        (m.kind === "Guess" && targetPlayer
+          ? " [" +
+            (targetPlayer.hand.length === 1
+              ? "kartu terakhir"
+              : m.slot === 1
+                ? "kanan"
+                : "kiri") +
+            "]"
+          : "") +
         (m.role ? " (" + m.role + ")" : ""),
       actor: id,
       role,
@@ -433,7 +460,61 @@ export function play(
       finish(g);
     } else if (m.kind === "Guess") {
       p.used = true;
-      g.stage = "guessAnswer";
+      const victim = targetPlayer!;
+      const slot = m.slot!;
+      const actual = victim.hand[slot];
+      const hit = oneTimeGuess.matches(victim, slot, m.role!);
+      if (hit) {
+        const words =
+          "Tebakan " + p.name + " benar. Kartu ini memang " + actual + ".";
+        record(g, {
+          text:
+            victim.name +
+            " membuka " +
+            actual +
+            ". Tebakan " +
+            p.name +
+            " benar.",
+          speech: { by: victim.id, words },
+          revealedGuess: actual,
+          proofSlot: slot,
+        });
+        record(g, {
+          text: "Tebakan " + p.name + " benar.",
+        });
+        if (!reveal(g, victim.id, actual, false, slot)) finish(g);
+      } else {
+        g.deck.push(actual);
+        shuffle(g.deck, rng);
+        victim.hand[slot] = g.deck.pop()!;
+        const words =
+          "Tebakan " +
+          p.name +
+          " salah. Kartu ini " +
+          actual +
+          ", bukan " +
+          m.role +
+          ".";
+        record(g, {
+          text:
+            victim.name +
+            " membuka " +
+            actual +
+            " lalu menggantinya dari dek. Tebakan " +
+            p.name +
+            " salah.",
+          speech: { by: victim.id, words },
+          actor: victim.id,
+          role: actual,
+          evidence: "proof",
+          proofSlot: slot,
+          deckMove: { seat: victim.id, kind: "replace", slot },
+        });
+        record(g, {
+          text: "Tebakan " + p.name + " salah.",
+        });
+        lose(g, p.id, "finish");
+      }
     } else {
       if (role)
         open(
@@ -441,22 +522,11 @@ export function play(
           m.kind === "Tax" && g.config.duke_blocks_tax
             ? "taxResponse"
             : "challenge",
-          m.target
-            ? [m.target]
-            : living(g)
-                .filter((q) => q.id !== id)
-                .map((q) => q.id),
+          m.target ? [m.target] : clockwiseOthers(g, id),
           now,
         );
       else if (m.kind === "Foreign Aid")
-        open(
-          g,
-          "block",
-          living(g)
-            .filter((q) => q.id !== id)
-            .map((q) => q.id),
-          now,
-        );
+        open(g, "block", clockwiseOthers(g, id), now);
       else advance(g, "resolve");
     }
   }

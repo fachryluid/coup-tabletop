@@ -1,6 +1,10 @@
 import type { Move } from "./model";
 // Only accepted, public declarations belong in the conversation.
-export function declaration(move: Move, target?: string): string {
+export function declaration(
+  move: Move,
+  target?: string,
+  targetCards?: number,
+): string {
   switch (move.kind) {
     case "Income":
       return "Saya mengambil 1 koin dari bank.";
@@ -26,22 +30,29 @@ export function declaration(move: Move, target?: string): string {
       );
     case "Exchange":
       return "Saya mengaku sebagai Ambassador. Saya ingin menukar kartu saya.";
-    case "Guess":
+    case "Guess": {
+      const cardLabel =
+        targetCards === 1
+          ? "kartu terakhir"
+          : move.slot === 1
+            ? "kartu kanan"
+            : "kartu kiri";
       return (
         "Saya menggunakan satu tebakan saya. Saya menebak " +
+        cardLabel +
+        " " +
         target +
-        " memegang " +
+        " adalah " +
         move.role +
         "."
       );
+    }
     case "Block":
       return "Saya mengaku sebagai " + move.role + " dan memblokir aksi ini.";
     case "Prove":
       return "Ini kartu " + move.role + " saya.";
     case "Challenge":
       return "Saya menantang klaim " + target + ". Buktikan kartumu.";
-    case "ConfirmGuess":
-      return "Saya menjawab tebakan.";
     case "Pass":
       return "Saya pass. Saya melewatkan kesempatan merespons.";
     case "Keep":

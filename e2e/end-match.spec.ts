@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("drawer scrolls as one panel and only the host can end the match", async ({
   page,
   browser,
-}) => {
+}, info) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Buat meja privat" }).click();
   await page.getByLabel("Nama pemain").fill("Ayu");
@@ -25,6 +25,7 @@ test("drawer scrolls as one panel and only the host can end the match", async ({
       width: page.viewportSize()!.width,
       height: 400,
     });
+    await page.getByRole("button", { name: "Lihat meja" }).click();
     await page.getByRole("button", { name: "Menu meja" }).click();
     const drawer = page.getByRole("dialog", { name: "Menu meja" });
     await drawer.getByText("Kontrol host", { exact: true }).click();
@@ -43,11 +44,17 @@ test("drawer scrolls as one panel and only the host can end the match", async ({
     for (const client of [page, guest])
       await expect(
         client.getByRole("heading", {
-          name: "Pertandingan diakhiri oleh host",
+          name: "Pertandingan Diakhiri",
+          exact: true,
         }),
       ).toBeVisible();
+    await page.setViewportSize({
+      width: page.viewportSize()!.width,
+      height: 760,
+    });
+    await page.screenshot({ path: info.outputPath("match-over.png") });
     await page
-      .getByRole("button", { name: "Kembali ke lobi untuk rematch" })
+      .getByRole("button", { name: "Kembali ke Lobi", exact: true })
       .click();
     await expect(guest.getByText("Lobi permainan")).toBeVisible();
   } finally {

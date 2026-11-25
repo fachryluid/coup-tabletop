@@ -111,6 +111,11 @@ it("suspends bot tasks on pause and waits for offline human decisions", () => {
   cmd({ type: "add" });
   cmd({ type: "start" });
   cmd({ type: "play", move: { kind: "Tax" } });
+  // Clockwise: human B responds first; bot waits until B passes
+  const beforePass = r.revision;
+  vi.advanceTimersByTime(10000);
+  expect(r.revision).toBe(beforePass);
+  cmd({ type: "play", move: { kind: "Pass" } }, b.id);
   cmd({ type: "pause" });
   const rev = r.revision;
   vi.advanceTimersByTime(10000);
@@ -118,7 +123,9 @@ it("suspends bot tasks on pause and waits for offline human decisions", () => {
   cmd({ type: "resume" });
   vi.advanceTimersByTime(5000);
   expect(r.revision).toBeGreaterThan(rev + 1);
-  expect(r.game!.pending.includes(b.id) || r.game!.stage === "loss").toBe(true);
+  expect(
+    r.game!.turn === b.id || r.game!.stage === "claimResponse",
+  ).toBe(true);
 });
 
 it("draws the opening seat and credits a win once before a direct rematch", () => {
@@ -147,9 +154,8 @@ it("draws the opening seat and credits a win once before a direct rematch", () =
     target.revealed.push(target.hand.pop()!);
     cmd(host, {
       type: "play",
-      move: { kind: "Guess", target: guest, role: target.hand[0] },
+      move: { kind: "Guess", target: guest, slot: 0, role: target.hand[0] },
     });
-    cmd(guest, { type: "play", move: { kind: "ConfirmGuess", answer: true } });
     expect(room.game!.winner).toBe(host);
     const firstMatch = room.matchRevision;
     cmd(host, { type: "again" });
@@ -219,3 +225,75 @@ it.each([false, true])(
     expect(r.game!.stage).toBe("turn");
   },
 );
+
+it("host can toggle extra rules ON/OFF in lobby, non-host cannot, and rules lock during match", () => {
+  const { b, r, cmd } = room();
+  expect(r.config).toEqual({
+    timer: false,
+    one_time_guess: false,
+    duke_blocks_tax: false,
+  });
+  expect(() =>
+    cmd({ type: "setting", key: "one_time_guess", value: true }, b.id),
+  ).toThrow("host");
+  cmd({ type: "setting", key: "one_time_guess", value: true });
+  cmd({ type: "setting", key: "duke_blocks_tax", value: true });
+  expect(r.config.one_time_guess).toBe(true);
+  expect(r.config.duke_blocks_tax).toBe(true);
+  cmd({ type: "setting", key: "duke_blocks_tax", value: false });
+  expect(r.config.duke_blocks_tax).toBe(false);
+  expect(() =>
+    cmd(
+      {
+        type: "rules",
+        values: { one_time_guess: true, duke_blocks_tax: true },
+      },
+      b.id,
+    ),
+  ).toThrow("host");
+  cmd({
+    type: "rules",
+    values: { one_time_guess: true, duke_blocks_tax: false },
+  });
+  expect(r.config.one_time_guess).toBe(true);
+  expect(r.config.duke_blocks_tax).toBe(false);
+  cmd({ type: "start" });
+  expect(() =>
+    cmd({
+      type: "rules",
+      values: { one_time_guess: false, duke_blocks_tax: false },
+    }),
+  ).toThrow("terkunci");
+  expect(() =>
+    cmd({ type: "setting", key: "one_time_guess", value: false }),
+  ).toThrow("terkunci");
+  expect(r.game!.config.one_time_guess).toBe(true);
+  expect(r.game!.config.duke_blocks_tax).toBe(false);
+  cmd({ type: "endMatch" });
+  cmd({ type: "rematch" });
+  cmd({ type: "setting", key: "one_time_guess", value: false });
+  expect(r.config.one_time_guess).toBe(false);
+});
+
+it("players can rename themselves in lobby with uniqueness check and match lock", () => {
+  const { a, b, r, cmd } = room();
+  cmd({ type: "rename", name: "Host Baru" });
+  expect(r.seats.find((s) => s.id === a.id)?.name).toBe("Host Baru");
+  cmd({ type: "rename", name: "Tamu Baru" }, b.id);
+  expect(r.seats.find((s) => s.id === b.id)?.name).toBe("Tamu Baru");
+  // Duplicate name (case-insensitive) against another seat is rejected
+  expect(() => cmd({ type: "rename", name: "tamu baru" })).toThrow("digunakan");
+  // Changing own casing is allowed
+  cmd({ type: "rename", name: "host baru" });
+  expect(r.seats.find((s) => s.id === a.id)?.name).toBe("host baru");
+  // Locked once match starts
+  cmd({ type: "start" });
+  expect(() => cmd({ type: "rename", name: "Terkunci" })).toThrow(
+    "berlangsung",
+  );
+  // Editable again after returning to lobby
+  cmd({ type: "endMatch" });
+  cmd({ type: "rematch" });
+  cmd({ type: "rename", name: "Host Lagi" });
+  expect(r.seats.find((s) => s.id === a.id)?.name).toBe("Host Lagi");
+});

@@ -87,9 +87,13 @@ export function tableDialogue(
     speakerId: current?.by,
     proofSeat:
       activeProof || state.moving?.proof ? current.by : state.exposed?.by,
+    proofSlot:
+      activeProof || state.moving?.proof
+        ? current.proofSlot
+        : state.exposed?.proofSlot,
     activeProof: activeProof ?? state.moving?.proof ?? state.exposed?.proof,
     proofStatus: activeProof
-      ? (current.move?.kind === "replace" ? "Pembuktian klaim " : "Membuka ") +
+      ? (current.move?.kind === "replace" ? "Pembuktian " : "Membuka ") +
         activeProof
       : undefined,
     bubble,

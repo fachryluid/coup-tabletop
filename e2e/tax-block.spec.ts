@@ -7,10 +7,12 @@ test("Tax offers Challenge and Duke Block together; accepting the block spends t
   await page.goto("/");
   await page.getByRole("button", { name: "Buat meja privat" }).click();
   await page.getByLabel("Nama pemain").fill("Ayu");
+  await page.getByRole("button", { name: "Buat room" }).click();
+  await page.getByRole("button", { name: "Tambahkan aturan lainnya" }).click();
   const toggle = page.getByLabel(/Duke Blocks Tax/);
   await toggle.click();
   await expect(toggle).toBeChecked();
-  await page.getByRole("button", { name: "Buat room" }).click();
+  await page.getByRole("button", { name: "Simpan aturan" }).click();
   const guest = await browser.newPage({ viewport: page.viewportSize()! });
   try {
     await guest.goto(page.url());

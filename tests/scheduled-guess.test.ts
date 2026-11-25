@@ -37,68 +37,55 @@ function botTable(seed: number) {
 }
 afterEach(() => vi.useRealTimers());
 
-it("human guesses a bot; only that bot answers and the scheduler cancels on pause", () => {
-  const { tables, room, host, first, second, send } = botTable(15);
+it("human guesses a bot's specific card; resolves immediately without waiting for target confirmation", () => {
+  const { tables, room, first, send } = botTable(15);
   try {
+    const targetCard = room.game!.players[1].hand[0];
     send({
       type: "play",
-      move: { kind: "Guess", target: first, role: "Duke" },
+      move: { kind: "Guess", target: first, slot: 0, role: targetCard },
     });
-    const view = (id: string) => tables.view(room, id).game!;
-    expect(view(host).legal).toEqual([]);
-    expect(view(second).legal).toEqual([]);
-    expect(view(first).legal).toEqual([{ kind: "ConfirmGuess", answer: true }]);
-    send({ type: "pause" });
-    vi.advanceTimersByTime(1000);
-    expect(room.game!.stage).toBe("guessAnswer");
-    send({ type: "resume" });
-    vi.advanceTimersByTime(25);
-    expect(room.game!.players[1].revealed).toEqual(["Duke"]);
+    expect(room.game!.players[1].revealed).toEqual([targetCard]);
     expect(room.game!.stage).toBe("turn");
+    expect(room.game!.turn).toBe(first);
   } finally {
     tables.dispose();
   }
 });
 
-it.each([15, 22])(
-  "scheduled Guess uses the target's decision; replay seed %i",
-  (seed) => {
-    const { tables, room, host, first, second, send } = botTable(seed);
-    try {
-      send({ type: "play", move: { kind: "Income" } });
-      vi.advanceTimersByTime(25);
-      const target = seed === 15 ? host : second;
-      const pending = tables.view(room, target).game!;
-      expect(pending.action).toMatchObject({ kind: "Guess", target });
-      expect(pending.context).toMatchObject({
-        actorId: first,
-        currentResponder: target,
-        eligibleResponders: [target],
-      });
-      expect(tables.view(room, first).game!.legal).toEqual([]);
-      const rev = room.revision;
-      if (target === host) {
-        vi.advanceTimersByTime(10000);
-        expect(room.revision).toBe(rev);
-        send({ type: "play", move: pending.legal[0] });
-        expect(room.game!.players[0].revealed).toEqual(["Captain"]);
-      } else {
-        vi.advanceTimersByTime(25);
-        expect(room.game!.loss?.id).toBe(first);
-        expect(room.game!.players[2].revealed).toEqual([]);
-      }
-      const events = room.game!.log.filter(
-        (e) => e.actionId === pending.context.actionId,
-      );
-      expect(events.map((e) => e.seq)).toEqual(
-        events.map((_, i) => events[0].seq + i),
-      );
-      expect(events[0].speech?.by).toBe(first);
-      expect(events[1].speech?.by).toBe(target);
-      expect(events[2].speech).toBeUndefined();
-      expect(events[2].text).toContain(seed === 15 ? "benar" : "salah");
-    } finally {
-      tables.dispose();
-    }
-  },
-);
+it("wrong guess reveals and replaces the target's card while guesser chooses card to lose; pause suspends bot", () => {
+  const { tables, room, host, first, send } = botTable(22);
+  try {
+    const actual = room.game!.players[1].hand[1];
+    const wrong = actual === "Duke" ? "Captain" : "Duke";
+    send({
+      type: "play",
+      move: { kind: "Guess", target: first, slot: 1, role: wrong },
+    });
+    expect(room.game!.stage).toBe("loss");
+    expect(room.game!.loss?.id).toBe(host);
+    expect(room.game!.players[1].hand).toHaveLength(2);
+    expect(
+      room.game!.log.some(
+        (e) =>
+          e.actor === first &&
+          e.evidence === "proof" &&
+          e.proofSlot === 1 &&
+          e.deckMove?.kind === "replace",
+      ),
+    ).toBe(true);
+    send({
+      type: "play",
+      move: { kind: "Lose", role: room.game!.players[0].hand[0] },
+    });
+    expect(room.game!.players[0].revealed).toHaveLength(1);
+    expect(room.game!.stage).toBe("turn");
+    expect(room.game!.turn).toBe(first);
+    send({ type: "pause" });
+    const rev = room.revision;
+    vi.advanceTimersByTime(1000);
+    expect(room.revision).toBe(rev);
+  } finally {
+    tables.dispose();
+  }
+});

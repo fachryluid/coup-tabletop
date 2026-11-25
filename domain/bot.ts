@@ -85,9 +85,12 @@ function score(o: BotObservation, m: Move, level: Difficulty) {
       return benefit + honesty + threat - (recentDefense ? 3 * cfg.memory : 0);
     }
     case "Guess":
-      return 7 * belief(o, m.target!, m.role!, level) - 1.4 + threat;
-    case "ConfirmGuess":
-      return 1;
+      return (
+        (7 * belief(o, m.target!, m.role!, level)) /
+          Math.max(1, opponent!.influence) -
+        1.4 +
+        threat
+      );
     case "Pass":
       return 2;
     case "Block":

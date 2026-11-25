@@ -7,6 +7,7 @@ export type Line = {
   by?: string;
   words: string;
   proof?: Role;
+  proofSlot?: number;
   guessed?: boolean;
   move?: Entry["deckMove"];
 };
@@ -19,6 +20,7 @@ function narrate(entries: GameEvent[]): Line[] {
       entry.discarded ??
       entry.revealedGuess ??
       (entry.evidence === "proof" ? entry.role : undefined),
+    proofSlot: entry.proofSlot,
     guessed: !!entry.revealedGuess,
     move: entry.deckMove,
   }));

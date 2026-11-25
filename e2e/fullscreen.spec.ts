@@ -12,11 +12,30 @@ for (const fallback of [false, true]) {
           };
         });
       await page.goto("/");
+      const enterStart = page.getByRole("button", {
+        name: "Layar penuh",
+        exact: true,
+      });
+      await expect(enterStart).toBeVisible();
+      await enterStart.click();
+      const stage = await page.locator(".start-stage").boundingBox();
+      expect(stage!.width).toBeCloseTo(page.viewportSize()!.width, 0);
+      expect(stage!.height).toBeGreaterThanOrEqual(
+        page.viewportSize()!.height - 1,
+      );
+      if (!fallback)
+        await page.screenshot({ path: info.outputPath("start-fullscreen.png") });
+      await page.getByRole("button", { name: "Keluar layar penuh" }).click();
       await page.getByRole("button", { name: "Buat meja privat" }).click();
       await page.getByLabel("Nama pemain").fill("Ayu");
       await page.getByRole("button", { name: "Buat room" }).click();
       await page.getByRole("button", { name: "Tambah computer" }).click();
       await page.getByRole("button", { name: "Mulai pertandingan" }).click();
+      await expect(page.locator(".action-overlay")).toBeVisible();
+      if (!fallback)
+        await page.screenshot({ path: info.outputPath("action-overlay.png") });
+      await page.getByRole("button", { name: "Lihat meja" }).click();
+      await expect(page.locator(".action-minimized-dock")).toBeVisible();
       const dock = page.getByRole("group", { name: "Kontrol tampilan" });
       await expect(dock).toHaveCSS("position", "static");
       await expect(

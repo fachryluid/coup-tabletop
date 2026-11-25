@@ -71,28 +71,43 @@ describe("aturan klasik dan modul tongkrongan", () => {
   it("only real deck transfers produce anonymous card movements", () => {
     const t = table();
     t.move("A", "Tax");
+    t.move("B", "Pass");
     t.move("C", "Challenge");
     t.move("A", "Prove", { role: "Duke" });
     expect(t.g.log.flatMap((e) => (e.deckMove ? [e.deckMove] : []))).toEqual([
-      { seat: "A", kind: "replace" },
+      { seat: "A", kind: "replace", slot: 0 },
     ]);
-    const guess = table({ one_time_guess: true });
-    guess.move("A", "Guess", { target: "B", role: "Captain" });
-    expect(guess.g.log.every((e) => !e.deckMove)).toBe(true);
+    const guessHit = table({ one_time_guess: true });
+    guessHit.move("A", "Guess", { target: "B", slot: 0, role: "Duke" });
+    expect(guessHit.g.log.every((e) => !e.deckMove)).toBe(true);
+    const guessMiss = table({ one_time_guess: true });
+    guessMiss.move("A", "Guess", { target: "B", slot: 1, role: "Captain" });
+    expect(
+      guessMiss.g.log.flatMap((e) => (e.deckMove ? [e.deckMove] : [])),
+    ).toEqual([{ seat: "B", kind: "replace", slot: 1 }]);
   });
   it.each([false, true])(
     "One-Time Guess independen dengan Duke Blocks Tax %s",
     (tax) => {
       for (const hit of [false, true]) {
         const t = table({ one_time_guess: true, duke_blocks_tax: tax });
-        t.move("A", "Guess", { target: "B", role: hit ? "Duke" : "Captain" });
+        // B holds ["Duke", "Contessa"] in fixture
+        t.move("A", "Guess", {
+          target: "B",
+          slot: 0,
+          role: hit ? "Duke" : "Captain",
+        });
         expect(legal(t.g, "C")).toEqual([]);
-        t.move("B", "ConfirmGuess", { answer: hit });
+        expect(legal(t.g, "B")).toEqual(hit ? expect.any(Array) : []);
         expect(
           t.g.log.find((e) => e.speech?.words.includes(hit ? "benar" : "salah"))
             ?.speech?.by,
         ).toBe("B");
-        if (!hit) t.move("A", "Lose", { role: "Assassin" });
+        if (!hit) {
+          expect(t.g.stage).toBe("loss");
+          expect(t.g.loss?.id).toBe("A");
+          t.move("A", "Lose", { role: "Assassin" });
+        }
         expect(t.g.players[hit ? 1 : 0].hand.length).toBe(1);
         t.move("B", "Income");
         t.move("C", "Income");
@@ -105,21 +120,60 @@ describe("aturan klasik dan modul tongkrongan", () => {
       ).toBe(false);
     },
   );
+  it("One-Time Guess harus cocok posisi kartu kiri/kanan; salah mengganti kartu yang ditebak dari dek", () => {
+    const t = table({ one_time_guess: true });
+    // B holds ["Duke", "Contessa"]: guessing Duke on slot 1 (kanan) MUST be wrong!
+    const beforeDeck = t.g.deck.length;
+    t.move("A", "Guess", { target: "B", slot: 1, role: "Duke" });
+    expect(t.g.stage).toBe("loss");
+    expect(t.g.loss?.id).toBe("A");
+    expect(t.g.players[1].hand[0]).toBe("Duke");
+    expect(t.g.players[1].hand).toHaveLength(2);
+    expect(t.g.deck).toHaveLength(beforeDeck);
+    const proof = t.g.log.find((e) => e.evidence === "proof");
+    expect(proof).toMatchObject({
+      actor: "B",
+      role: "Contessa",
+      proofSlot: 1,
+      deckMove: { seat: "B", kind: "replace", slot: 1 },
+    });
+    // Guessing slot 1 when target only has 1 card is rejected
+    const t2 = table({ one_time_guess: true });
+    t2.g.players[1].revealed.push(t2.g.players[1].hand.pop()!);
+    expect(() =>
+      t2.move("A", "Guess", { target: "B", slot: 1, role: "Duke" }),
+    ).toThrow();
+    t2.move("A", "Guess", { target: "B", slot: 0, role: "Duke" });
+    expect(t2.g.players[1].hand).toHaveLength(0);
+    expect(t2.g.players[1].revealed).toHaveLength(2);
+  });
   it.each([false, true])(
     "Tax dan challenge terhadap blok, guess=%s",
     (guess) => {
       for (const blocker of ["B", "C"]) {
         const t = table({ one_time_guess: guess, duke_blocks_tax: true });
         t.move("A", "Tax");
-        for (const id of ["B", "C"])
-          expect(legal(t.g, id)).toEqual(
+        // Clockwise order: B responds first, C waits until B passes
+        expect(legal(t.g, "B")).toEqual(
+          expect.arrayContaining([
+            { kind: "Pass" },
+            { kind: "Challenge" },
+            { kind: "Block", role: "Duke" },
+          ]),
+        );
+        expect(legal(t.g, "C")).toEqual([]);
+        expect(legal(t.g, "A")).toEqual([]);
+        if (blocker === "C") {
+          t.move("B", "Pass");
+          expect(legal(t.g, "C")).toEqual(
             expect.arrayContaining([
               { kind: "Pass" },
               { kind: "Challenge" },
               { kind: "Block", role: "Duke" },
             ]),
           );
-        expect(legal(t.g, "A")).toEqual([]);
+          expect(legal(t.g, "B")).toEqual([]);
+        }
         t.move(blocker, "Block", { role: "Duke" });
         expect(t.g.pending).toEqual(["A"]);
         expect(() =>
@@ -143,6 +197,7 @@ describe("aturan klasik dan modul tongkrongan", () => {
     for (const challenge of [true, false]) {
       const t = table({ duke_blocks_tax: true });
       t.move("A", "Tax");
+      t.move("B", "Pass");
       if (challenge) {
         t.move("C", "Challenge");
         expect(() => t.move("B", "Block", { role: "Duke" })).toThrow();
@@ -150,12 +205,26 @@ describe("aturan klasik dan modul tongkrongan", () => {
         t.move("C", "Lose", { role: "Captain" });
       } else {
         t.move("C", "Pass");
-        t.move("B", "Pass");
       }
       expect(t.g.turn).toBe("B");
       expect(t.g.stage).toBe("turn");
       expect(t.g.players[0].coins).toBe(challenge ? 2 : 5);
     }
+  });
+  it("intervensi publik selalu mengikuti urutan searah jarum jam", () => {
+    const t = table({ duke_blocks_tax: true });
+    t.move("A", "Income");
+    // B acts: clockwise response order must be C -> A
+    t.move("B", "Tax");
+    expect(t.g.pending).toEqual(["C", "A"]);
+    expect(legal(t.g, "A")).toEqual([]);
+    expect(() => t.move("A", "Pass")).toThrow();
+    t.move("C", "Pass");
+    expect(t.g.pending).toEqual(["A"]);
+    expect(legal(t.g, "A").length).toBeGreaterThan(0);
+    t.move("A", "Pass");
+    expect(t.g.turn).toBe("C");
+    expect(t.g.players[1].coins).toBe(5);
   });
   it("Tax bluff cancels before block and unchallenged block cancels aid", () => {
     const t = table({ duke_blocks_tax: true });
@@ -174,15 +243,17 @@ describe("aturan klasik dan modul tongkrongan", () => {
     const t = table({ timer: true, duke_blocks_tax: true });
     t.move("A", "Tax");
     expect(t.g.deadline).toBe(30100);
-    t.move("B", "Pass");
-    expect(() => t.move("B", "Pass")).toThrow();
-    expect(() => t.move("C", "Challenge", {}, 30100)).toThrow();
-    const next = closeWindow(t.g, 30100);
+    // B passes at t=150 -> C gets a fresh 30s deadline (30150)
+    t.move("B", "Pass", {}, 150);
+    expect(t.g.deadline).toBe(30150);
+    expect(() => t.move("B", "Pass", {}, 151)).toThrow();
+    expect(() => t.move("C", "Challenge", {}, 30150)).toThrow();
+    const next = closeWindow(t.g, 30150);
     expect(next.stage).toBe("turn");
     expect(next.players[0].coins).toBe(5);
-    t.move("C", "Block", { role: "Duke" }, 30099);
-    expect(t.g.deadline).toBe(60099);
-    t.move("A", "Pass", {}, 30101);
+    t.move("C", "Block", { role: "Duke" }, 30149);
+    expect(t.g.deadline).toBe(60149);
+    t.move("A", "Pass", {}, 30151);
     expect(t.g.turn).toBe("B");
     expect(t.g.players[0].coins).toBe(2);
     expect(t.g.players[0].hand).toHaveLength(2);
@@ -317,10 +388,11 @@ it.each([
     );
     const blocked = play(declared, "B", { kind: "Block", role }, 2, rng);
     const challenged = play(blocked, "A", { kind: "Challenge" }, 3, rng);
+    const concededRole = role === "Contessa" ? "Duke" : "Contessa";
     const ended = play(
       challenged,
       "B",
-      { kind: "Lose", role: "Contessa" },
+      { kind: "Lose", role: concededRole },
       4,
       rng,
     );
@@ -333,8 +405,58 @@ it.each([
     expect(ended.stage).toBe("turn");
     expect(ended.turn).toBe("B");
     expect(ended.log.at(-1)).toMatchObject({
-      discarded: "Contessa",
+      discarded: concededRole,
       status: "resolved",
     });
   },
 );
+
+it("otomatis menggugurkan kartu terakhir tanpa menunggu pilihan saat kartu tinggal satu", () => {
+  // 1. Coup on 1-card player eliminates immediately
+  const t1 = table();
+  t1.g.players[0].coins = 7;
+  t1.g.players[1].revealed.push(t1.g.players[1].hand.pop()!);
+  t1.move("A", "Coup", { target: "B" });
+  expect(t1.g.stage).toBe("turn");
+  expect(t1.g.players[1].hand).toEqual([]);
+  expect(t1.g.players[1].revealed).toHaveLength(2);
+
+  // 2. Bluffing with 1 non-matching card auto-eliminates on Challenge without claimResponse
+  const t2 = table();
+  t2.g.players[2].hand = ["Captain"];
+  t2.g.players[2].revealed = ["Ambassador"];
+  t2.move("A", "Income");
+  t2.move("B", "Income");
+  t2.move("C", "Tax"); // claims Duke, only holds Captain
+  t2.move("A", "Challenge");
+  expect(t2.g.stage).toBe("turn");
+  expect(t2.g.players[2].hand).toEqual([]);
+  expect(t2.g.players[2].revealed).toEqual(["Ambassador", "Captain"]);
+
+  // 3. Matching 1-card claimant STILL gets claimResponse to Prove (no instant timing tell)
+  const t3 = table();
+  t3.g.players[0].hand = ["Duke"];
+  t3.g.players[0].revealed = ["Assassin"];
+  t3.move("A", "Tax");
+  t3.move("B", "Challenge");
+  expect(t3.g.stage).toBe("claimResponse");
+  expect(legal(t3.g, "A")).toEqual([{ kind: "Prove", role: "Duke" }]);
+
+  // 4. Claimant with [Duke, Assassin] challenged on Duke cannot uselessly Lose Duke, only Prove Duke or Lose Assassin
+  const t4 = table();
+  t4.move("A", "Tax");
+  t4.move("B", "Challenge");
+  expect(legal(t4.g, "A")).toEqual([
+    { kind: "Prove", role: "Duke" },
+    { kind: "Lose", role: "Assassin" },
+  ]);
+  expect(() => t4.move("A", "Lose", { role: "Duke" })).toThrow();
+
+  // 5. Claimant with two identical matching cards [Duke, Duke] stays in claimResponse (no auto-prove tell)
+  const t5 = table();
+  t5.g.players[0].hand = ["Duke", "Duke"];
+  t5.move("A", "Tax");
+  t5.move("B", "Challenge");
+  expect(t5.g.stage).toBe("claimResponse");
+  expect(legal(t5.g, "A")).toEqual([{ kind: "Prove", role: "Duke" }]);
+});

@@ -8,11 +8,11 @@ export function FullscreenButton() {
     const sync = () =>
       setExpanded(
         document.fullscreenElement === table ||
-          table.classList.contains("screen-fit"),
+          table.hasAttribute("data-screen-fit"),
       );
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && table.classList.contains("screen-fit")) {
-        table.classList.remove("screen-fit");
+      if (event.key === "Escape" && table.hasAttribute("data-screen-fit")) {
+        delete table.dataset.screenFit;
         sync();
       }
     };
@@ -21,7 +21,7 @@ export function FullscreenButton() {
     return () => {
       document.removeEventListener("fullscreenchange", sync);
       document.removeEventListener("keydown", escape);
-      table.classList.remove("screen-fit");
+      delete table.dataset.screenFit;
       if (document.fullscreenElement === table)
         void document.exitFullscreen().catch(() => {});
     };
@@ -30,15 +30,15 @@ export function FullscreenButton() {
     const table = button.current!.closest("main")!;
     if (document.fullscreenElement === table) {
       await document.exitFullscreen();
-    } else if (table.classList.contains("screen-fit")) {
-      table.classList.remove("screen-fit");
+    } else if (table.hasAttribute("data-screen-fit")) {
+      delete table.dataset.screenFit;
       setExpanded(false);
     } else {
       try {
         await table.requestFullscreen();
       } catch {
         // Some mobile browsers only allow native fullscreen for video.
-        table.classList.add("screen-fit");
+        table.dataset.screenFit = "true";
         setExpanded(true);
       }
       table.scrollTop = 0;

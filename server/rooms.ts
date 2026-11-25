@@ -34,11 +34,10 @@ const move = z
       "Block",
       "Lose",
       "Keep",
-      "ConfirmGuess",
     ]),
-    answer: z.boolean().optional(),
     role: z.enum(roles).optional(),
     target: z.string().optional(),
+    slot: z.number().int().min(0).max(1).optional(),
     indices: z.array(z.number().int()).max(2).optional(),
   })
   .strict();
@@ -58,6 +57,7 @@ export const command = z.discriminatedUnion("type", [
     ]),
   }),
   z.object({ type: z.literal("remove"), id: z.string() }),
+  z.object({ type: z.literal("rename"), name: nick }),
   z.object({
     type: z.literal("level"),
     id: z.string(),
@@ -65,8 +65,17 @@ export const command = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("setting"),
-    key: z.literal("timer"),
+    key: z.enum(["timer", "one_time_guess", "duke_blocks_tax"]),
     value: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("rules"),
+    values: z
+      .object({
+        one_time_guess: z.boolean(),
+        duke_blocks_tax: z.boolean(),
+      })
+      .strict(),
   }),
   z.object({
     type: z.literal("coins"),
@@ -238,6 +247,19 @@ export class Tables {
       room.seats = room.seats.filter((s) => s.id !== id);
       for (const [token, seat] of room.tokens)
         if (seat === id) room.tokens.delete(token);
+    } else if (cmd.type === "rename") {
+      if (g) throw Error("Nama tidak dapat diubah saat pertandingan berlangsung.");
+      const next = nick.parse(cmd.name);
+      if (
+        room.seats.some(
+          (s) => s.id !== id && s.name.toLowerCase() === next.toLowerCase(),
+        )
+      )
+        throw Error("Nama ini sudah digunakan.");
+      const me = room.seats.find((s) => s.id === id)!;
+      me.name = next;
+      const recordWin = room.wins.get(id);
+      if (recordWin) recordWin.name = next;
     } else if (cmd.type === "play") {
       if (!g) throw Error("Pertandingan belum dimulai.");
       room.game = play(g, id, cmd.move, now, this.rng);
@@ -256,6 +278,9 @@ export class Tables {
         switch (cmd.type) {
           case "setting":
             room.config = { ...room.config, [cmd.key]: cmd.value };
+            break;
+          case "rules":
+            room.config = { ...room.config, ...cmd.values };
             break;
           case "add": {
             if (room.seats.length >= 6) throw Error("Room penuh.");

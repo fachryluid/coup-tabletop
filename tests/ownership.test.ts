@@ -8,27 +8,35 @@ import { initialPlayback, playback } from "../app/table-playback";
 const seats = ["A", "B", "C"].map((id) => ({ id, name: id }));
 const rng = () => 0.42;
 
-it.each([true, false])("rejects an inaccurate Guess answer, hit=%s", (hit) => {
-  const start = deal(seats, { ...defaults, one_time_guess: true }, rng);
-  start.players[1].hand = ["Duke", "Duke"];
-  const g = play(
-    start,
-    "A",
-    { kind: "Guess", target: "B", role: hit ? "Duke" : "Captain" },
-    0,
-    rng,
-  );
-  expect(() =>
-    play(g, "B", { kind: "ConfirmGuess", answer: !hit }, 1, rng),
-  ).toThrow();
-  expect(legal(g, "B")).toEqual([{ kind: "ConfirmGuess", answer: hit }]);
-  const result = play(g, "B", legal(g, "B")[0], 1, rng);
-  expect(
-    result.log.some(
-      (e) => !e.speech && e.text.includes(hit ? "benar" : "salah"),
-    ),
-  ).toBe(true);
-});
+it.each([true, false])(
+  "resolves Guess immediately without extra target action, hit=%s",
+  (hit) => {
+    const start = deal(seats, { ...defaults, one_time_guess: true }, rng);
+    start.players[1].hand = ["Duke", "Contessa"];
+    const result = play(
+      start,
+      "A",
+      { kind: "Guess", target: "B", slot: 0, role: hit ? "Duke" : "Captain" },
+      0,
+      rng,
+    );
+    expect(
+      result.log.some(
+        (e) => !e.speech && e.text.includes(hit ? "benar" : "salah"),
+      ),
+    ).toBe(true);
+    if (hit) {
+      expect(result.stage).toBe("turn");
+      expect(result.players[1].revealed).toEqual(["Duke"]);
+      expect(result.players[1].hand).toEqual(["Contessa"]);
+    } else {
+      expect(result.stage).toBe("loss");
+      expect(result.loss?.id).toBe("A");
+      expect(result.players[1].hand).toHaveLength(2);
+      expect(result.log.some((e) => e.deckMove?.kind === "replace")).toBe(true);
+    }
+  },
+);
 
 it("rejects previous phase and wrong action with current revision", () => {
   const tables = new Tables(
@@ -167,7 +175,8 @@ it("global windows wait for each remaining living player, including after reconn
       );
     send(id, { kind: "Foreign Aid" });
     const initial = tables.view(room, c.id).game!.context;
-    expect(initial.eligibleResponders).toEqual([b.id, c.id]);
+    expect(initial.eligibleResponders).toEqual([b.id]);
+    expect(tables.view(room, c.id).game!.legal).toEqual([]);
     send(b.id, { kind: "Pass" });
     expect(() => send(b.id, { kind: "Pass" })).toThrow();
     const restored = tables.restore(room.code, c.token);

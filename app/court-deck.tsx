@@ -27,7 +27,7 @@ async function animateCards(
       const extras = (preview ?? seat).querySelectorAll<HTMLElement>(
         "[data-exchange-slot]",
       );
-      const returns = arena.querySelectorAll<HTMLElement>(
+      const returns = (deck.closest("main") ?? arena).querySelectorAll<HTMLElement>(
         ".exchange-cards [aria-pressed=false]",
       );
       const replacement = deckMove.kind === "replace";
@@ -38,7 +38,9 @@ async function animateCards(
       const slot = dealing
         ? live[i]
         : replacement
-          ? (seat.querySelector<HTMLElement>("[data-proof]") ?? live[0])
+          ? (seat.querySelector<HTMLElement>("[data-proof]") ??
+            live[deckMove.slot ?? 0] ??
+            live[0])
           : ((returning ? returns[i] : undefined) ?? extras[i]);
       if (!slot) continue;
       const target = slot.getBoundingClientRect();

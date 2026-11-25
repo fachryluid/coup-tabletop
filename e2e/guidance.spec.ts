@@ -79,12 +79,17 @@ test("Steal menjelaskan pelaku, target, peran dan siapa yang merespons", async (
     await ctx.close();
   }
 });
-test("musik latar benar-benar diputar dan dijeda", async ({ page }) => {
+test("musik latar benar-benar diputar, diatur volumenya, ganti varian, dan dijeda", async ({
+  page,
+}) => {
   await page.goto("/");
-  const toggle = page.getByRole("button", { name: "Musik latar" });
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  const trigger = page.getByRole("button", { name: "Musik latar" });
+  await expect(trigger).toHaveAttribute("aria-pressed", "false");
+  await trigger.click();
+  const panel = page.getByRole("region", { name: "Kontrol musik latar" });
+  await expect(panel).toBeVisible();
+  await panel.getByRole("button", { name: "Putar" }).click();
+  await expect(trigger).toHaveAttribute("aria-pressed", "true");
   await expect
     .poll(() =>
       page
@@ -92,8 +97,16 @@ test("musik latar benar-benar diputar dan dijeda", async ({ page }) => {
         .evaluate((el) => (el as HTMLAudioElement).currentTime),
     )
     .toBeGreaterThan(0.1);
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await panel.getByLabel("Volume musik").fill("65");
+  expect(
+    await page
+      .locator("audio")
+      .evaluate((el) => (el as HTMLAudioElement).volume),
+  ).toBeCloseTo(0.65, 2);
+  await panel.getByRole("radio", { name: /Balairung Malam/ }).click();
+  await expect(trigger).toHaveAttribute("aria-pressed", "true");
+  await panel.getByRole("button", { name: "Matikan" }).click();
+  await expect(trigger).toHaveAttribute("aria-pressed", "false");
   expect(
     await page
       .locator("audio")

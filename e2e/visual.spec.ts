@@ -67,10 +67,12 @@ test("Exchange memilih indeks kartu lalu Guess memilih lawan dan peran", async (
   await page.goto("/");
   await page.getByRole("button", { name: "Buat meja privat" }).click();
   await page.getByLabel("Nama pemain").fill("Ayu");
+  await page.getByRole("button", { name: "Buat room" }).click();
+  await page.getByRole("button", { name: "Tambahkan aturan lainnya" }).click();
   const toggle = page.getByLabel(/One-Time Guess/);
   await toggle.click();
   await expect(toggle).toBeChecked();
-  await page.getByRole("button", { name: "Buat room" }).click();
+  await page.getByRole("button", { name: "Simpan aturan" }).click();
   const ctx = await browser.newContext({ viewport: page.viewportSize()! });
   try {
     const guest = await ctx.newPage();
@@ -128,6 +130,7 @@ test("Exchange memilih indeks kartu lalu Guess memilih lawan dan peran", async (
     await guest.getByRole("button", { name: "Ayu" }).click();
     await guest.getByRole("button", { name: "Kembali", exact: true }).click();
     await guest.getByRole("button", { name: "Ayu" }).click();
+    await guest.getByRole("button", { name: /Kartu kiri/ }).click();
     const revealedRole = (await page
       .locator(".hand-card img")
       .first()
@@ -139,20 +142,9 @@ test("Exchange memilih indeks kartu lalu Guess memilih lawan dan peran", async (
       await expect(view.locator("blockquote")).toContainText("Saya menebak");
     await expect(page.locator(".hand-card")).toHaveCount(2);
     await expect(guest.locator(".opponent .fallen")).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Jawab benar" }),
-    ).toBeVisible();
-    await expect(
-      guest.getByRole("button", { name: /Jawab (benar|salah)/ }),
-    ).toHaveCount(0);
     const declaration = guest.locator("[data-event-seq]");
     const actionId = await declaration.getAttribute("data-action-id");
     const seq = Number(await declaration.getAttribute("data-event-seq"));
-    await page.getByRole("button", { name: "Jawab salah" }).click();
-    await expect(
-      page.getByText("Pilihan tidak sah untuk fase ini."),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Jawab benar" }).click();
     await expect(guest.locator(".opponent [data-proof] img")).toHaveAttribute(
       "alt",
       new RegExp("^" + revealedRole),

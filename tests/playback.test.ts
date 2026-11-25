@@ -47,18 +47,11 @@ it("keeps the last influence alive through Guess, result, reveal, and winner ann
   const start = deal(seats, { ...defaults, one_time_guess: true }, rng);
   const discarded = start.players[1].hand.pop()!;
   start.players[1].revealed.push(discarded);
-  const guess = play(
+  const final = play(
     start,
     "A",
-    { kind: "Guess", target: "B", role: start.players[1].hand[0] },
+    { kind: "Guess", target: "B", slot: 0, role: start.players[1].hand[0] },
     0,
-    rng,
-  );
-  const final = play(
-    guess,
-    "B",
-    { kind: "ConfirmGuess", answer: true },
-    1,
     rng,
   );
   let s = receive(initialPlayback, snapshot(start, 1), true);

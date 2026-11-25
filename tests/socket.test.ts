@@ -56,15 +56,20 @@ it.each([false, true])(
       expect(
         (await a.cmd({ type: "setting", key: "timer", value: timer })).ok,
       ).toBe(true);
-      const changeRules = () =>
-        a.send("command", {
-          revision: a.state().revision,
-          context: a.state().game?.context,
-          command: { type: "setting", key: "one_time_guess", value: false },
+      const changeRules = (value = false, actor = a) =>
+        actor.send("command", {
+          revision: actor.state().revision,
+          context: actor.state().game?.context,
+          command: { type: "setting", key: "one_time_guess", value },
         });
-      expect((await changeRules()).ok).toBe(false);
+      // Guest cannot toggle rules in lobby, host can toggle OFF and back ON before start
+      expect((await changeRules(false, b)).ok).toBe(false);
+      expect((await changeRules(false, a)).ok).toBe(true);
+      await viWait(() => a.state().config.one_time_guess === false);
+      expect((await changeRules(true, a)).ok).toBe(true);
+      await viWait(() => a.state().config.one_time_guess === true);
       expect((await a.cmd({ type: "start" })).ok).toBe(true);
-      expect((await changeRules()).ok).toBe(false);
+      expect((await changeRules(false, a)).ok).toBe(false);
       expect(a.state().game!.config.one_time_guess).toBe(true);
       expect((await a.cmd({ type: "play", move: { kind: "Income" } })).ok).toBe(
         true,
