@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { claims, windows, type Action, type Move, type Role } from "../domain/model";
+import { classicCardImage } from "../domain/card-themes";
 import type { RoomView } from "../domain/view";
 import type { Command } from "../server/rooms";
 import { Face, Back } from "./cards";
@@ -16,13 +17,13 @@ const explains: Record<string, string> = {
   Guess: "Tebak kartu · 1× / match",
 };
 
-function ActionEmblem({ kind }: { kind: Action }) {
-  const claimed = claims[kind];
+function ActionEmblem({ kind }: { kind: Action | "Switch" }) {
+  const claimed = kind === "Switch" ? undefined : claims[kind];
   if (claimed) {
     return (
       <span className="action-art-thumb" aria-hidden="true">
         <img
-          src={"/cards/" + claimed.toLowerCase() + ".webp"}
+          src={classicCardImage(claimed)}
           alt=""
           width={56}
           height={82}
@@ -80,6 +81,17 @@ function ActionEmblem({ kind }: { kind: Action }) {
           <path d="M8 28 27 9m0 0-6 1m6-1-1 6" />
           <path d="M28 28 9 9m0 0 6 1M9 9l1 6" />
           <path d="M12 24l4 4m8-4-4 4" opacity="0.7" />
+        </svg>
+      </span>
+    );
+  }
+  if (kind === "Switch") {
+    return (
+      <span className="action-emblem emblem-switch" aria-hidden="true">
+        <svg viewBox="0 0 36 36" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="6" y="7" width="11" height="16" rx="2" opacity="0.85" />
+          <rect x="19" y="13" width="11" height="16" rx="2" fill="#182624" />
+          <path d="m14 27-4 3 4 3m-4-3h12m0-24 4 3-4 3m4-3H14" strokeWidth="1.9" />
         </svg>
       </span>
     );
@@ -263,7 +275,7 @@ export function ActionOverlay({
                 )
               }
             >
-              <Face role={role} />
+              <Face role={role} theme={g.cardTheme} variant={g.poolArt?.[i] ?? 0} />
               {kept.includes(i) && <span aria-hidden="true">✓</span>}
             </button>
           ))}
@@ -318,7 +330,11 @@ export function ActionOverlay({
                   ))}
                   {seat.revealed.map((r, idx) => (
                     <span key={"f" + idx} className="mini-fallen">
-                      <Face role={r} />
+                      <Face
+                        role={r}
+                        theme={g.cardTheme}
+                        variant={seat.revealedArt?.[idx] ?? 0}
+                      />
                     </span>
                   ))}
                 </span>
@@ -377,6 +393,82 @@ export function ActionOverlay({
         </div>
       );
     }
+  } else if (chosen === "Coup") {
+    const targetMoves = target ? moves.filter((m) => m.target === target) : [];
+    const targetSlots = [
+      ...new Set(targetMoves.map((m) => m.slot ?? 0)),
+    ].sort((a, b) => a - b);
+
+    if (!target) {
+      heading = "Pilih target · Coup";
+      backAction = () => choose("");
+      const targetIds = [...new Set(moves.map((m) => m.target!))];
+      content = (
+        <div className="choices target-grid">
+          {targetIds.map((id) => {
+            const seat = g.players.find((p) => p.id === id)!;
+            const seatMoves = moves.filter((m) => m.target === id);
+            const aria = `Coup · ${seat.name}`;
+            return (
+              <button
+                key={id}
+                type="button"
+                className="target-card"
+                aria-label={aria}
+                data-kind="Coup"
+                onClick={() => {
+                  if (seatMoves.length === 1) {
+                    send({ type: "play", move: seatMoves[0] });
+                  } else {
+                    setTarget(id);
+                  }
+                }}
+              >
+                <span className="target-cards-mini" aria-hidden="true">
+                  {Array.from({ length: seat.influence }, (_, idx) => (
+                    <Back key={idx} />
+                  ))}
+                  {seat.revealed.map((r, idx) => (
+                    <span key={"f" + idx} className="mini-fallen">
+                      <Face
+                        role={r}
+                        theme={g.cardTheme}
+                        variant={seat.revealedArt?.[idx] ?? 0}
+                      />
+                    </span>
+                  ))}
+                </span>
+                <span className="sr-only">{aria}</span>
+                <b aria-hidden="true">{seat.name}</b>
+                <small aria-hidden="true">◉ {seat.coins} koin</small>
+              </button>
+            );
+          })}
+        </div>
+      );
+    } else {
+      heading = `Pilih kartu ${name(target)} untuk Coup`;
+      backAction = () => setTarget("");
+      content = (
+        <div className="choices mystery-cards">
+          {targetSlots.map((s) => {
+            const move = targetMoves.find((m) => (m.slot ?? 0) === s)!;
+            return (
+              <button
+                key={s}
+                type="button"
+                className="mystery-card-btn"
+                data-kind="Coup"
+                aria-label={s === 0 ? "Kartu kiri" : "Kartu kanan"}
+                onClick={() => send({ type: "play", move })}
+              >
+                <MysteryCardArt side={s} />
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
   } else if (g.stage === "turn" && !moves.length) {
     heading =
       kinds.length === 1 && kinds[0] === "Coup"
@@ -406,6 +498,20 @@ export function ActionOverlay({
             </button>
           );
         })}
+        {g.canSwitch && (
+          <button
+            type="button"
+            className="action-tile"
+            data-kind="Switch"
+            onClick={() => send({ type: "switch" })}
+          >
+            <ActionEmblem kind="Switch" />
+            <span className="action-tile-copy">
+              <b>Tukar Kartu</b>
+              <small>Kiri ↔ kanan · 1× / giliran</small>
+            </span>
+          </button>
+        )}
       </div>
     );
   } else if (moves.length) {
@@ -431,7 +537,11 @@ export function ActionOverlay({
                 ))}
                 {seat.revealed.map((r, idx) => (
                   <span key={"f" + idx} className="mini-fallen">
-                    <Face role={r} />
+                    <Face
+                      role={r}
+                      theme={g.cardTheme}
+                      variant={seat.revealedArt?.[idx] ?? 0}
+                    />
                   </span>
                 ))}
               </span>
@@ -450,23 +560,27 @@ export function ActionOverlay({
         : "Pilih kartu Anda yang gugur";
     content = (
       <div className="choices card-decision-grid">
-        {g.legal.map((m, i) => (
-          <button
-            key={i}
-            type="button"
-            className="card-decision-btn"
-            aria-label={label(m)}
-            data-kind={m.kind}
-            onClick={() => send({ type: "play", move: m })}
-          >
-            <Face role={m.role as Role} />
-            {g.stage === "claimResponse" && (
-              <span className="decision-tag" aria-hidden="true">
-                {m.kind === "Prove" ? "Buktikan" : "Gugurkan"}
-              </span>
-            )}
-          </button>
-        ))}
+        {g.legal.map((m, i) => {
+          const handIdx = g.hand.indexOf(m.role as Role);
+          const artVariant = handIdx >= 0 ? (g.handArt?.[handIdx] ?? 0) : 0;
+          return (
+            <button
+              key={i}
+              type="button"
+              className="card-decision-btn"
+              aria-label={label(m)}
+              data-kind={m.kind}
+              onClick={() => send({ type: "play", move: m })}
+            >
+              <Face role={m.role as Role} theme={g.cardTheme} variant={artVariant} />
+              {g.stage === "claimResponse" && (
+                <span className="decision-tag" aria-hidden="true">
+                  {m.kind === "Prove" ? "Buktikan" : "Gugurkan"}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
     );
   } else {
@@ -493,7 +607,7 @@ export function ActionOverlay({
             {m.kind === "Block" && m.role ? (
               <span className="action-art-thumb" aria-hidden="true">
                 <img
-                  src={"/cards/" + m.role.toLowerCase() + ".webp"}
+                  src={classicCardImage(m.role)}
                   alt=""
                   width={52}
                   height={76}

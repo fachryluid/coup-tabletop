@@ -1,8 +1,10 @@
 import { Server } from "socket.io";
 import type { Server as HttpServer } from "node:http";
 import { stages } from "../domain/model";
+import { emoteIds } from "../domain/emotes";
 import { z } from "zod";
 import { Tables, MemoryRooms, command, nick, type Room } from "./rooms";
+const emoteRequest = z.object({ emote: z.enum(emoteIds) }).strict();
 const code = z
   .string()
   .trim()
@@ -92,6 +94,21 @@ export function attach(
     listen("voice:join", () => {
       if (!activeSeat(seat)) throw Error("Sesi tidak aktif.");
       voiceSockets.add(socket.id);
+      return {};
+    });
+    let lastEmote = 0;
+    listen("emote", (raw) => {
+      if (!seat || !activeSeat(seat)) throw Error("Sesi tidak aktif.");
+      if (!seat.room.game) throw Error("Emote hanya tersedia saat pertandingan.");
+      const msg = emoteRequest.parse(raw);
+      const now = Date.now();
+      if (now - lastEmote < 1200)
+        throw Error("Tunggu sebentar sebelum mengirim emote lagi.");
+      lastEmote = now;
+      const payload = { seatId: seat.id, emote: msg.emote, ts: now };
+      for (const sid of seat.room.online.values()) {
+        io.to(sid).emit("emote", payload);
+      }
       return {};
     });
     socket.on("voice:leave", () => voiceSockets.delete(socket.id));

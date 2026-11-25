@@ -86,13 +86,11 @@ test("Exchange memilih indeks kartu lalu Guess memilih lawan dan peran", async (
     await page.getByRole("button", { name: /^Exchange/ }).click();
     await guest.getByRole("button", { name: "Pass", exact: true }).click();
     const pool = page.locator(".exchange-cards button");
-    await expect(page.locator("blockquote")).toContainText("Saya pass");
-    await expect(page.locator(".court-deck")).toContainText("11 kartu");
-    await expect(pool).toHaveCount(0);
     await expect(page.locator("blockquote")).toContainText(
       "mengambil dua kartu",
     );
     await expect(page.locator(".court-deck")).toContainText("11 kartu");
+    await expect(pool).toHaveCount(0);
     await expect(
       guest.locator(".deck-pile .travelling-card").first(),
     ).toBeAttached();

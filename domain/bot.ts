@@ -44,7 +44,12 @@ const value: Record<Role, number> = {
   Contessa: 1.8,
   Ambassador: 1.5,
 };
-function score(o: BotObservation, m: Move, level: Difficulty) {
+function score(
+  o: BotObservation,
+  m: Move,
+  level: Difficulty,
+  getBelief: (id: string, role: Role) => number,
+) {
   const cfg = presets[level],
     opponent = o.players.find((p) => p.id === m.target);
   const threat = opponent
@@ -86,7 +91,7 @@ function score(o: BotObservation, m: Move, level: Difficulty) {
     }
     case "Guess":
       return (
-        (7 * belief(o, m.target!, m.role!, level)) /
+        (7 * getBelief(m.target!, m.role!)) /
           Math.max(1, opponent!.influence) -
         1.4 +
         threat
@@ -99,7 +104,7 @@ function score(o: BotObservation, m: Move, level: Difficulty) {
       const block = o.stage === "blockChallenge" ? o.blocker : undefined;
       const role =
         block?.role ?? claims[o.action!.kind as keyof typeof claims]!;
-      return 3.1 - 4 * belief(o, block?.id ?? o.turn, role, level);
+      return 3.1 - 4 * getBelief(block?.id ?? o.turn, role);
     }
     case "Prove":
       return 8;
@@ -116,10 +121,20 @@ export function decide(
   level: Difficulty,
   rng: () => number,
 ) {
+  const cache = new Map<string, number>();
+  const getBelief = (id: string, role: Role) => {
+    const key = id + ":" + role;
+    let cached = cache.get(key);
+    if (cached === undefined) {
+      cached = belief(o, id, role, level);
+      cache.set(key, cached);
+    }
+    return cached;
+  };
   let best: Move | undefined,
     highest = -Infinity;
   for (const move of o.legal) {
-    const n = score(o, move, level) + presets[level].noise * rng();
+    const n = score(o, move, level, getBelief) + presets[level].noise * rng();
     if (n > highest) {
       highest = n;
       best = move;

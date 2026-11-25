@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { Entry } from "../domain/model";
+import { cardImage, type CardThemeId } from "../domain/card-themes";
 import type { Line } from "./table-playback";
 import { Back } from "./cards";
+import {
+  playCardDeal,
+  playCardPlace,
+  playCardShuffle,
+} from "./sound-effects";
 
 async function animateCards(
   deck: HTMLDivElement,
@@ -10,9 +16,13 @@ async function animateCards(
   signal: AbortSignal,
   proof?: Line["proof"],
   arrived?: () => void,
+  cardTheme: CardThemeId = "classic",
+  proofArt = 0,
 ) {
   const arena = deck.closest(".arena");
   if (!arena || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (dealing) playCardShuffle();
+  let cardStep = 0;
   for (let i = 0; i < 2; i++) {
     for (const deckMove of moves) {
       if (signal.aborted) return;
@@ -46,31 +56,40 @@ async function animateCards(
       const target = slot.getBoundingClientRect();
       const x = target.left + target.width / 2 - source.left - source.width / 2;
       const y = target.top + target.height / 2 - source.top - source.height / 2;
-      const home = "translate(-50%,-50%) rotate(-6deg)";
-      const away = `translate(calc(-50% + ${x}px),calc(-50% + ${y}px)) scale(${target.width / 30},${target.height / 42})`;
+      // Size the flying card at full target dimensions and scale down at the deck
+      // so the vector/image artwork stays razor-sharp with zero blurry upscaling.
+      const cardW = Math.max(source.width, target.width);
+      const cardH = Math.max(source.height, target.height);
+      const deckSx = source.width / cardW;
+      const deckSy = source.height / cardH;
+      const seatSx = target.width / cardW;
+      const seatSy = target.height / cardH;
+      const home = `translate(-50%,-50%) rotate(-6deg) scale(${deckSx},${deckSy})`;
+      const away = `translate(calc(-50% + ${x}px),calc(-50% + ${y}px)) scale(${seatSx},${seatSy})`;
       if (returning) slot.dataset.travelling = "";
-      const card = document.createElement("i");
+      const card = document.createElement("span");
       card.className = "travelling-card card-back";
       card.setAttribute("aria-hidden", "true");
       card.dataset.motion = deckMove.kind;
+      card.style.width = `${cardW}px`;
+      card.style.height = `${cardH}px`;
       if (replacement && returning && proof) {
-        card.style.background =
-          "center / cover url(/cards/" + proof.toLowerCase() + ".webp)";
+        card.style.backgroundImage = `url(${cardImage(proof, cardTheme, proofArt)})`;
       }
       const ownFace =
         returning &&
         slot.closest(".exchange-cards") &&
         slot.querySelector("img");
-      if (ownFace)
-        card.style.background = `center / cover url("${ownFace.src}")`;
+      if (ownFace) card.style.backgroundImage = `url("${ownFace.src}")`;
       deck.append(card);
+      playCardDeal(cardStep++);
       const animation = card.animate(
         [
           { opacity: 1, transform: returning ? away : home },
           {
             opacity: 1,
             offset: 0.52,
-            transform: `translate(calc(-50% + ${x * 0.52}px),calc(-50% + ${y * 0.52 - 14}px)) rotate(${returning ? 7 : -7}deg) scale(${(1 + target.width / 30) / 2},${(1 + target.height / 42) / 2})`,
+            transform: `translate(calc(-50% + ${x * 0.52}px),calc(-50% + ${y * 0.52 - 14}px)) rotate(${returning ? 7 : -7}deg) scale(${(deckSx + seatSx) / 2},${(deckSy + seatSy) / 2})`,
           },
           { opacity: 1, transform: returning ? home : away },
         ],
@@ -85,6 +104,7 @@ async function animateCards(
       try {
         await animation.finished;
         if (signal.aborted) return;
+        if (!dealing) playCardPlace();
         if (dealing) {
           slot.dataset.arrived = "";
           arrived?.();
@@ -102,6 +122,7 @@ async function animateCards(
 }
 export function CourtDeck({
   count,
+  cardTheme = "classic",
   showDeal,
   moving,
   onDelivery,
@@ -109,6 +130,7 @@ export function CourtDeck({
 }: {
   onDeal: () => void;
   count: number;
+  cardTheme?: CardThemeId;
   showDeal: boolean;
   moving?: Line;
   onDelivery: (line: Line) => void;
@@ -153,6 +175,9 @@ export function CourtDeck({
       false,
       abort.signal,
       moving.proof,
+      undefined,
+      cardTheme,
+      moving.proofArt ?? 0,
     ).then(() => {
       if (!abort.signal.aborted) onDelivery(moving);
     });
@@ -163,7 +188,7 @@ export function CourtDeck({
         ?.querySelectorAll<HTMLElement>("[data-travelling]")
         .forEach((slot) => delete slot.dataset.travelling);
     };
-  }, [moving, onDelivery]);
+  }, [moving, onDelivery, cardTheme]);
   return (
     <div
       className="court-deck"

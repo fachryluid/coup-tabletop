@@ -11,10 +11,18 @@ import {
   type Game,
   type Seat,
 } from "../domain/model";
-import { play, endMatch, closeWindow, player, legal } from "../domain/engine";
+import {
+  play,
+  switchCards,
+  endMatch,
+  closeWindow,
+  player,
+  legal,
+} from "../domain/engine";
 import { observe, type RoomView } from "../domain/view";
 import { decide, supportedRules } from "../domain/bot";
 import { rules } from "../domain/house-rules";
+import { cardThemeIds, type CardThemeId } from "../domain/card-themes";
 
 export const nick = z.string().trim().min(1).max(32);
 const move = z
@@ -54,6 +62,7 @@ export const command = z.discriminatedUnion("type", [
       "undo",
       "close",
       "leave",
+      "switch",
     ]),
   }),
   z.object({ type: z.literal("remove"), id: z.string() }),
@@ -62,6 +71,10 @@ export const command = z.discriminatedUnion("type", [
     type: z.literal("level"),
     id: z.string(),
     value: z.enum(["easy", "normal", "hard"]),
+  }),
+  z.object({
+    type: z.literal("theme"),
+    value: z.enum(cardThemeIds),
   }),
   z.object({
     type: z.literal("setting"),
@@ -97,6 +110,7 @@ export interface Room {
   tokens: Map<string, string>;
   online: Map<string, string>;
   config: Config;
+  cardTheme: CardThemeId;
   revision: number;
   game?: Game;
   matchRevision?: number;
@@ -140,6 +154,7 @@ export class Tables {
       tokens: new Map(),
       online: new Map(),
       config: { ...defaults, ...houseRules },
+      cardTheme: "classic",
       wins: new Map(),
       revision: 0,
       botNumber: 0,
@@ -179,6 +194,7 @@ export class Tables {
       revision: room.revision,
       serverTime: Date.now(),
       config: { ...room.config },
+      cardTheme: room.cardTheme,
       seats: room.seats.map((p) => ({
         ...p,
         online: !!p.difficulty || room.online.has(p.id),
@@ -196,7 +212,13 @@ export class Tables {
     };
   }
   private startMatch(room: Room) {
-    const game = deal(room.seats, room.config, this.rng, randomUUID());
+    const game = deal(
+      room.seats,
+      room.config,
+      this.rng,
+      randomUUID(),
+      room.cardTheme,
+    );
     game.turn =
       room.seats.find((s) => s.id === room.previousWinner)?.id ??
       room.seats[this.firstSeat(room.seats.length)].id;
@@ -260,6 +282,9 @@ export class Tables {
       me.name = next;
       const recordWin = room.wins.get(id);
       if (recordWin) recordWin.name = next;
+    } else if (cmd.type === "switch") {
+      if (!g) throw Error("Pertandingan belum dimulai.");
+      room.game = switchCards(g, id);
     } else if (cmd.type === "play") {
       if (!g) throw Error("Pertandingan belum dimulai.");
       room.game = play(g, id, cmd.move, now, this.rng);
@@ -278,6 +303,9 @@ export class Tables {
         switch (cmd.type) {
           case "setting":
             room.config = { ...room.config, [cmd.key]: cmd.value };
+            break;
+          case "theme":
+            room.cardTheme = cmd.value;
             break;
           case "rules":
             room.config = { ...room.config, ...cmd.values };
@@ -348,6 +376,7 @@ export class Tables {
             if (!p) throw Error("Kursi tidak tersedia.");
             const previous = p.coins;
             p.coins = cmd.value;
+            const delta = cmd.value - previous;
             record(g, {
               text:
                 host +
@@ -359,6 +388,14 @@ export class Tables {
                 cmd.value +
                 ". Alasan: " +
                 cmd.reason,
+              ...(delta !== 0
+                ? {
+                    coinMove:
+                      delta > 0
+                        ? { from: "bank", to: p.id, amount: delta }
+                        : { from: p.id, to: "bank", amount: -delta },
+                  }
+                : {}),
             });
             g.undo = undefined;
             break;
@@ -373,7 +410,11 @@ export class Tables {
             g.actionNumber++;
             g.turn = p.id;
             g.undo = undefined;
-            record(g, { text: host + " membatalkan Income " + p.name + "." });
+            g.switched = false;
+            record(g, {
+              text: host + " membatalkan Income " + p.name + ".",
+              coinMove: { from: p.id, to: "bank", amount: 1 },
+            });
             break;
           }
           default:
@@ -401,6 +442,32 @@ export class Tables {
         if (room.revision !== revision || this.expire(room)) return;
         if (bot) {
           const o = observe(g, bot.id);
+          const threatToSlot =
+            o.canSwitch &&
+            (o.config.one_time_guess ||
+              o.players.some(
+                (p) => p.id !== bot.id && p.influence > 0 && p.coins >= 7,
+              ));
+          const switchChance =
+            bot.difficulty === "hard"
+              ? 0.32
+              : bot.difficulty === "normal"
+                ? 0.2
+                : 0.1;
+          if (threatToSlot && this.rng() < switchChance) {
+            try {
+              this.execute(
+                room,
+                bot.id,
+                revision,
+                { type: "switch" },
+                o.context,
+              );
+              return;
+            } catch {
+              // Fall through to normal move selection if switch was rejected.
+            }
+          }
           const choice = decide(o, bot.difficulty!, this.rng) ?? o.legal[0];
           try {
             this.execute(

@@ -223,3 +223,69 @@ it("relays voice only between subscribed seats in the same room and resets on re
     await io.close();
   }
 });
+
+it("broadcasts valid in-game emotes only to the same room with rate limiting", async () => {
+  const http = createServer();
+  const { io, tables } = attach(http);
+  await new Promise<void>((done) => http.listen(0, "127.0.0.1", done));
+  const url = "http://127.0.0.1:" + (http.address() as AddressInfo).port;
+  const sockets: Socket[] = [];
+  function client() {
+    const socket = connect(url, {
+      transports: ["websocket"],
+      forceNew: true,
+      reconnection: false,
+    });
+    sockets.push(socket);
+    let view: RoomView;
+    const emotes: { seatId: string; emote: string; ts: number }[] = [];
+    socket.on("state", (s: RoomView) => {
+      view = s;
+    });
+    socket.on("emote", (e) => emotes.push(e));
+    return {
+      socket,
+      emotes,
+      state: () => view,
+      send: (event: string, data = {}) =>
+        socket.timeout(3000).emitWithAck(event, data),
+      cmd: (command: Command) =>
+        socket.timeout(3000).emitWithAck("command", {
+          revision: view.revision,
+          context: view.game?.context,
+          command,
+        }),
+    };
+  }
+  try {
+    const host = client(),
+      peer = client(),
+      other = client();
+    const room = await host.send("enter", { type: "create", name: "Host" });
+    await peer.send("enter", {
+      type: "join",
+      code: room.code,
+      name: "Peer",
+    });
+    await other.send("enter", { type: "create", name: "Other" });
+    await viWait(() => host.state()?.seats.length === 2);
+    // Rejected in lobby before match starts
+    expect((await host.send("emote", { emote: "clap" })).ok).toBe(false);
+    expect((await host.cmd({ type: "start" })).ok).toBe(true);
+    await viWait(() => !!peer.state()?.game);
+    // Invalid emote rejected
+    expect((await host.send("emote", { emote: "invalid" })).ok).toBe(false);
+    // Valid emote broadcast to both host and peer, NOT other room
+    expect((await host.send("emote", { emote: "sus" })).ok).toBe(true);
+    await viWait(() => peer.emotes.length === 1 && host.emotes.length === 1);
+    expect(peer.emotes[0].emote).toBe("sus");
+    expect(peer.emotes[0].seatId).toBe(host.state().me);
+    expect(other.emotes).toEqual([]);
+    // Immediate second emote rate-limited
+    expect((await host.send("emote", { emote: "laugh" })).ok).toBe(false);
+  } finally {
+    for (const socket of sockets) socket.disconnect();
+    tables.dispose();
+    await io.close();
+  }
+});

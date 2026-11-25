@@ -72,11 +72,7 @@ it("rejects all non-host controls, duplicate revision and unsafe undo", () => {
   expect(r.game!.turn).toBe(a.id);
   cmd({ type: "coins", id: a.id, value: 7, reason: "Kesepakatan meja" });
   expect(r.game!.log.at(-1)!.text).toContain("dari 2 menjadi 7");
-  cmd({ type: "play", move: { kind: "Coup", target: b.id } });
-  cmd(
-    { type: "play", move: { kind: "Lose", role: r.game!.players[1].hand[0] } },
-    b.id,
-  );
+  cmd({ type: "play", move: { kind: "Coup", target: b.id, slot: 0 } });
   expect(() => cmd({ type: "undo" })).toThrow();
 });
 it.each([false, true])(
@@ -296,4 +292,49 @@ it("players can rename themselves in lobby with uniqueness check and match lock"
   cmd({ type: "rematch" });
   cmd({ type: "rename", name: "Host Lagi" });
   expect(r.seats.find((s) => s.id === a.id)?.name).toBe("Host Lagi");
+});
+
+it("allows once-per-turn card switch via room command and resets next turn", () => {
+  const { a, b, r, cmd } = room();
+  cmd({ type: "start" });
+  const initialHand = [...r.game!.players[0].hand];
+  expect(tables.view(r, a.id).game!.canSwitch).toBe(true);
+  expect(tables.view(r, b.id).game!.canSwitch).toBe(false);
+  cmd({ type: "switch" });
+  expect(r.game!.players[0].hand).toEqual([initialHand[1], initialHand[0]]);
+  expect(tables.view(r, a.id).game!.canSwitch).toBe(false);
+  expect(() => cmd({ type: "switch" })).toThrow();
+  // Still able to perform normal turn action right after switch
+  cmd({ type: "play", move: { kind: "Income" } });
+  expect(r.game!.turn).toBe(b.id);
+  expect(tables.view(r, b.id).game!.canSwitch).toBe(true);
+  // Pause blocks switch
+  cmd({ type: "pause" });
+  expect(tables.view(r, b.id).game!.canSwitch).toBe(false);
+  expect(() => cmd({ type: "switch" }, b.id)).toThrow();
+});
+
+it("host can select card theme in lobby (default classic), locked during match, and non-host rejected", () => {
+  const { a, b, r, cmd } = room();
+  expect(r.cardTheme).toBe("classic");
+  expect(tables.view(r, b.id).cardTheme).toBe("classic");
+  expect(() => cmd({ type: "theme", value: "custom1" }, b.id)).toThrow("host");
+  cmd({ type: "theme", value: "custom1" });
+  expect(r.cardTheme).toBe("custom1");
+  expect(tables.view(r, b.id).cardTheme).toBe("custom1");
+  cmd({ type: "start" });
+  expect(r.game!.cardTheme).toBe("custom1");
+  expect(tables.view(r, a.id).game!.cardTheme).toBe("custom1");
+  expect(tables.view(r, b.id).game!.cardTheme).toBe("custom1");
+  // Opponents' hidden handArt is never exposed in projection
+  expect(
+    tables.view(r, a.id).game!.players.every((p) => !("handArt" in p)),
+  ).toBe(true);
+  // Locked during match
+  expect(() => cmd({ type: "theme", value: "classic" })).toThrow("terkunci");
+  // Editable again in lobby after match ends
+  cmd({ type: "endMatch" });
+  cmd({ type: "rematch" });
+  cmd({ type: "theme", value: "classic" });
+  expect(r.cardTheme).toBe("classic");
 });

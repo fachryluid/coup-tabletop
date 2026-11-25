@@ -27,7 +27,7 @@ it("computes public match awards accurately without leaking hidden cards", () =>
 
   // C takes Income, A coups B (B only has 1 card left -> auto-eliminated)
   g = play(g, "C", { kind: "Income" }, 8, rng);
-  g = play(g, "A", { kind: "Coup", target: "B" }, 9, rng);
+  g = play(g, "A", { kind: "Coup", target: "B", slot: 0 }, 9, rng);
   expect(g.players[1].hand).toEqual([]);
 
   const stats = computeMatchStats(observe(g, "A"));

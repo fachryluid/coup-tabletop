@@ -1,5 +1,8 @@
 import { legal, player, eligibleResponders } from "./engine";
 import { phaseStamp, type Game, type Seat, type Config } from "./model";
+import type { CardThemeId } from "./card-themes";
+const alignArt = (cards: unknown[], arts?: number[]) =>
+  cards.map((_, i) => arts?.[i] ?? 0);
 export function observe(g: Game, id: string) {
   const me = player(g, id);
   const responders = eligibleResponders(g);
@@ -18,9 +21,10 @@ export function observe(g: Game, id: string) {
             : "pending",
     },
     id,
+    cardTheme: (g.cardTheme ?? "classic") as CardThemeId,
     deckCount: g.deck.length,
     players: g.players.map(
-      ({ hand, revealed, id, name, coins, difficulty, used }) => ({
+      ({ hand, revealed, revealedArt, id, name, coins, difficulty, used }) => ({
         id,
         name,
         coins,
@@ -28,10 +32,16 @@ export function observe(g: Game, id: string) {
         used,
         influence: hand.length,
         revealed: [...revealed],
+        revealedArt: alignArt(revealed, revealedArt),
       }),
     ),
     hand: [...me.hand],
+    handArt: alignArt(me.hand, me.handArt),
     pool: g.stage === "exchange" && g.turn === id ? [...g.pool] : [],
+    poolArt:
+      g.stage === "exchange" && g.turn === id
+        ? alignArt(g.pool, g.poolArt)
+        : [],
     legal: legal(g, id),
     turn: g.turn,
     stage: g.stage,
@@ -45,6 +55,12 @@ export function observe(g: Game, id: string) {
     winner: g.winner,
     log: g.log.map((e) => ({ ...e })),
     canUndo: !!g.undo,
+    canSwitch:
+      g.paused === null &&
+      g.stage === "turn" &&
+      g.turn === id &&
+      !g.switched &&
+      me.hand.length === 2,
   };
 }
 export type BotObservation = ReturnType<typeof observe>;
@@ -58,5 +74,6 @@ export interface RoomView {
   me: string;
   seats: (Seat & { online: boolean })[];
   config: Config;
+  cardTheme: CardThemeId;
   game?: BotObservation;
 }

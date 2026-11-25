@@ -3742,3 +3742,1062 @@ main.in-match:is(:fullscreen, [data-screen-fit]) .action-minimized-dock {
     padding: 16px;
   }
 }
+
+
+/* ==========================================================================
+   Mystery card Coup accent (pure card face without captions below)
+   ========================================================================== */
+.mystery-card-btn[data-kind="Coup"] .mystery-card-face {
+  border-color: #d68576;
+  background: radial-gradient(
+    circle at 50% 35%,
+    #883630 0%,
+    #58211f 55%,
+    #361414 100%
+  );
+}
+
+/* ==========================================================================
+   Home navigation buttons (Lobby, Drawer, Match Over)
+   ========================================================================== */
+.lobby-title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lobby-home-btn {
+  min-height: 44px;
+  padding: 8px 14px;
+  margin: 0;
+  border-radius: 10px;
+  background: #232d2b;
+  border: 1px solid #7e6f54;
+  color: #f3e4c7;
+  font-size: 14px;
+  font-weight: 600;
+}
+.lobby-home-btn:enabled:hover {
+  background: #323f3c;
+  border-color: var(--gold);
+}
+.drawer-home-btn {
+  width: 100%;
+  margin: 14px 0 0;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #293632;
+  border: 1px solid #8a7856;
+  color: #f6e2bc;
+  font-weight: 600;
+}
+.drawer-home-btn:enabled:hover {
+  background: #384943;
+  border-color: var(--gold);
+}
+.over-home-btn {
+  background: #1d2625e6;
+  border-color: #7c6d54;
+  color: #e6dac4;
+}
+
+/* ==========================================================================
+   Start Screen: How To Play Guide ("Apa itu Coup & Cara Bermain")
+   ========================================================================== */
+.start-stage .start-guide-btn {
+  background: #142228cc;
+  border-color: #7c6f55;
+  color: #e9d7b4;
+}
+.start-stage .start-guide-btn:enabled:hover {
+  background: #243841;
+  border-color: var(--gold);
+  color: #fff2d8;
+}
+.how-to-play {
+  margin: 22px 0 10px;
+  padding: clamp(22px, 4vw, 44px);
+  border-radius: 16px;
+  border: 1px solid #6e5f45;
+  background: linear-gradient(170deg, #162228 0%, #121b20 55%, #15211f 100%);
+  color: var(--paper);
+  box-shadow: 0 18px 44px #0006;
+  display: grid;
+  gap: clamp(22px, 3vw, 34px);
+  scroll-margin-top: 20px;
+}
+main.start-screen:is(:fullscreen, [data-screen-fit]) .how-to-play {
+  width: min(1260px, calc(100% - clamp(28px, 6vw, 96px)));
+  margin: 28px auto 48px;
+}
+.htp-hero {
+  display: grid;
+  gap: 10px;
+  max-width: 78ch;
+}
+.htp-kicker {
+  display: inline-block;
+  width: fit-content;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffe2a4;
+  background: #3d311b;
+  border: 1px solid #a9894f;
+}
+.how-to-play h2 {
+  margin: 0;
+  font-size: clamp(26px, 3.6vw, 40px);
+  color: #f7e1b2;
+}
+.htp-lead {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: #e4dac8;
+}
+.htp-lead strong {
+  color: #fff3d8;
+}
+.htp-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.htp-step {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #4e5650;
+  background: #1b282b;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+.htp-step-num {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: Georgia, serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: #241a0b;
+  background: linear-gradient(145deg, #f3d28f, #be8d3f);
+  box-shadow: 0 3px 10px #0005;
+}
+.htp-step h3,
+.htp-block h3 {
+  margin: 0;
+  color: #f3d79e;
+  font-size: 19px;
+}
+.htp-step p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #d6cebe;
+}
+.htp-block {
+  display: grid;
+  gap: 14px;
+}
+.htp-block > h3 {
+  font-size: clamp(20px, 2.4vw, 25px);
+  padding-bottom: 6px;
+  border-bottom: 1px solid #59503f;
+}
+.htp-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.htp-action-card {
+  padding: 15px 16px;
+  border-radius: 12px;
+  border: 1px solid #555952;
+  background: #1b2727;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.htp-action-coup {
+  border-color: #9e5d51;
+  background: linear-gradient(155deg, #2f1e1e 0%, #1e1718 100%);
+}
+.htp-action-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.htp-action-top b {
+  font-family: Georgia, serif;
+  font-size: 18px;
+  color: #fff2d8;
+}
+.htp-tag {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #3d331f;
+  border: 1px solid #a88a55;
+  color: #ffe3ab;
+}
+.htp-tag-danger {
+  background: #4e2320;
+  border-color: #c87769;
+  color: #ffe0d8;
+}
+.htp-action-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #d9d0c0;
+}
+.htp-roles-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+.htp-role-card {
+  border-radius: 12px;
+  border: 1px solid #635844;
+  background: #1a2424;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.htp-role-card img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 150 / 195;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+  border-bottom: 1px solid #6b5d44;
+}
+.htp-role-copy {
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.htp-role-copy h4 {
+  margin: 0;
+  font: 600 17px Georgia, serif;
+  color: #f6dcb0;
+}
+.htp-role-copy dl {
+  margin: 0;
+  display: grid;
+  gap: 5px;
+  font-size: 12.5px;
+}
+.htp-role-copy dt {
+  font-weight: 700;
+  color: #bfa97e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10.5px;
+}
+.htp-role-copy dd {
+  margin: 0;
+  color: #f0e6d2;
+}
+.htp-role-copy p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #c6beae;
+}
+.htp-extras-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.htp-extra-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #6d6149;
+  background: #1d2521;
+  display: grid;
+  gap: 6px;
+}
+.htp-extra-card b {
+  font-family: Georgia, serif;
+  font-size: 17px;
+  color: #ffe3ab;
+}
+.htp-extra-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #d6cebe;
+}
+.htp-foot {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+.htp-foot button {
+  min-height: 48px;
+  padding: 10px 24px;
+  border-radius: 999px;
+}
+
+@media (max-width: 1024px) {
+  .htp-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .htp-roles-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .htp-steps,
+  .htp-actions-grid,
+  .htp-extras-grid {
+    grid-template-columns: 1fr;
+  }
+  .htp-roles-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .how-to-play {
+    padding: 18px 16px;
+  }
+}
+
+/* ==========================================================================
+   In-Game Emote Picker & Seat Emote Burst
+   ========================================================================== */
+.emote-control {
+  position: relative;
+}
+.emote-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 42;
+  width: min(286px, calc(100vw - 24px));
+  padding: 12px;
+  border-radius: 12px;
+  background: #1d2926;
+  border: 1px solid #968259;
+  box-shadow: 0 12px 32px #000a;
+  color: var(--paper);
+  display: grid;
+  gap: 10px;
+  text-align: left;
+  font-weight: normal;
+  letter-spacing: normal;
+}
+main.in-match:is(:fullscreen, [data-screen-fit]) .emote-popover {
+  top: 0;
+  right: calc(100% + 10px);
+}
+.emote-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.emote-popover-head b {
+  font-family: Georgia, serif;
+  font-size: 15px;
+  color: var(--gold);
+}
+.emote-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.emote-popover .emote-option {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 10px;
+  margin: 0;
+  border-radius: 8px;
+  border: 1px solid #4e5e57;
+  background: #243430;
+  color: var(--paper);
+  font-size: 13px;
+}
+.emote-popover .emote-option:enabled:hover {
+  background: #324741;
+  border-color: var(--gold);
+  transform: translateY(-1px);
+}
+.emote-emoji {
+  font-size: 19px;
+  line-height: 1;
+  flex: none;
+}
+.emote-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.seat-emote-burst {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 9px;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #2d3e39f2 0%, #1a2623f5 100%);
+  border: 1.5px solid #e7c184;
+  box-shadow:
+    0 8px 22px #0008,
+    0 0 14px #e7c18444;
+  white-space: nowrap;
+  animation: emote-burst-anim 3.2s cubic-bezier(0.2, 0.85, 0.28, 1) forwards;
+}
+.player-area > .seat-emote-burst {
+  top: -26px;
+}
+.seat-emote-emoji {
+  font-size: 20px;
+  line-height: 1;
+}
+.seat-emote-text {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff3d6;
+}
+@keyframes emote-burst-anim {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.65);
+  }
+  10% {
+    opacity: 1;
+    transform: translate(-50%, -4px) scale(1.06);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -2px) scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: translate(-50%, -8px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -18px) scale(0.92);
+  }
+}
+
+/* ==========================================================================
+   3D Top-Down Tabletop Coins, Treasury Next to Deck, & Flying Coin Animation
+   ========================================================================== */
+.court-center {
+  grid-template-columns: auto minmax(0, 1fr) 72px;
+  gap: 14px;
+}
+.court-supplies {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 18px;
+}
+.court-treasury {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+}
+.court-treasury small {
+  font-size: 12px;
+  color: var(--gold);
+  white-space: nowrap;
+}
+.treasury-pile {
+  position: relative;
+  min-width: 74px;
+  height: 52px;
+  padding: 0 2px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.treasury-stacks {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 2px;
+}
+.treasury-pillar {
+  width: 19px;
+  height: 36px;
+  margin-left: -4px;
+}
+.treasury-pillar:first-child {
+  margin-left: 0;
+}
+.treasury-pillar .coin-3d {
+  width: 19px;
+  height: 12px;
+  transform: translateY(calc(var(--i, 0) * -2.2px));
+}
+.treasury-pillar[data-pillar="0"] {
+  z-index: 1;
+  transform: translateY(-4px);
+}
+.treasury-pillar[data-pillar="1"] {
+  z-index: 2;
+  transform: translateY(-6px);
+}
+.treasury-pillar[data-pillar="2"] {
+  z-index: 1;
+  transform: translateY(-3px);
+}
+.treasury-pillar[data-pillar="3"] {
+  z-index: 3;
+  transform: translateY(3px);
+  margin-left: -34px;
+}
+.treasury-pillar[data-pillar="4"] {
+  z-index: 4;
+  transform: translateY(4px);
+  margin-left: 2px;
+}
+
+.seat-coins-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+.player-coins-row {
+  justify-content: flex-start;
+  margin: 5px 0 3px;
+}
+.coin-tray {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 18px;
+  min-height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.coin-tray-compact {
+  min-height: 18px;
+}
+.coin-stacks {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+}
+.coin-pillar {
+  position: relative;
+  display: block;
+  width: 20px;
+  height: 24px;
+}
+.coin-tray-compact .coin-pillar {
+  width: 16px;
+  height: 19px;
+}
+.coin-3d {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 20px;
+  height: 14px;
+  border-radius: 50%;
+  transform: translateY(calc(var(--i, 0) * -3px));
+  background: radial-gradient(
+    ellipse at 35% 28%,
+    #fff7cc 0%,
+    #f3cb72 36%,
+    #ca9638 72%,
+    #8f6218 100%
+  );
+  border: 1px solid #f8df97;
+  box-shadow:
+    0 1.5px 0 #a37422,
+    0 2.5px 0 #6b4710;
+  transition: filter 0.18s ease-out;
+}
+.coin-3d:first-child {
+  box-shadow:
+    0 1.5px 0 #a37422,
+    0 2.5px 0 #6b4710,
+    0 4px 5px rgb(7 22 18 / 45%);
+}
+.coin-tray-compact .coin-3d {
+  width: 16px;
+  height: 11px;
+  transform: translateY(calc(var(--i, 0) * -2.4px));
+  box-shadow:
+    0 1px 0 #a37422,
+    0 2px 0 #6b4710;
+}
+.coin-tray-compact .coin-3d:first-child {
+  box-shadow:
+    0 1px 0 #a37422,
+    0 2px 0 #6b4710,
+    0 3px 4px rgb(7 22 18 / 42%);
+}
+.coin-3d-top::after {
+  content: "";
+  position: absolute;
+  inset: 2px 3px;
+  border-radius: 50%;
+  border: 1px solid #8f621877;
+  background: radial-gradient(
+    circle at 40% 35%,
+    #fff8d666 0%,
+    transparent 65%
+  );
+}
+.coin-3d[data-coin-hit="true"] {
+  filter: brightness(1.24) drop-shadow(0 0 6px #ffe399aa);
+}
+.coin-overflow {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffe3a3;
+  margin-left: 2px;
+  align-self: center;
+}
+
+/* Flying 3D gold coins across the tabletop */
+.travelling-coin {
+  position: absolute;
+  z-index: 18;
+  pointer-events: none;
+  width: 20px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at 35% 28%,
+    #fff9d6 0%,
+    #f6d07a 36%,
+    #cd9738 74%,
+    #8e6016 100%
+  );
+  border: 1px solid #ffebb0;
+  box-shadow:
+    0 2px 0 #9f6f20,
+    0 3px 0 #664410,
+    0 10px 12px rgb(6 20 16 / 38%);
+}
+
+@media (max-width: 720px) {
+  .court-center {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: 8px;
+    margin: 8px auto;
+  }
+  .court-center .live-turn {
+    grid-column: 1;
+    margin: 2px auto;
+  }
+  .court-supplies {
+    gap: 16px;
+  }
+  .treasury-pile {
+    min-width: 68px;
+    height: 46px;
+  }
+  .seat-coins-row {
+    gap: 5px;
+  }
+  .seat-emote-burst {
+    padding: 4px 9px 4px 7px;
+  }
+  .seat-emote-emoji {
+    font-size: 17px;
+  }
+  .seat-emote-text {
+    font-size: 11.5px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seat-emote-burst {
+    animation: none;
+  }
+}
+
+
+/* ==========================================================================
+   Switch Card Position Tile & Criss-Cross Animation
+   ========================================================================== */
+.action-tile[data-kind="Switch"] {
+  border-color: #7ea79b;
+  background: linear-gradient(155deg, #213734 0%, #162423 100%);
+}
+.emblem-switch {
+  color: #b7ebd9;
+  border-color: #6b9e8f;
+  background: #182b28;
+}
+.table-switch-btn {
+  margin-top: 6px;
+  min-height: 36px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #23332fe6;
+  border: 1px solid #a88f5e;
+  color: #f6e2b9;
+}
+.table-switch-btn:enabled:hover {
+  background: #314640;
+  border-color: var(--gold);
+}
+
+/* Criss-cross physical card swap animation on both opponent fan & private hand */
+.fan[data-swapping="true"] > [data-live-card]:nth-child(1),
+.private-hand[data-swapping="true"] > [data-live-card]:nth-child(1) {
+  animation: card-swap-left 0.56s cubic-bezier(0.35, 0.08, 0.25, 1) both;
+}
+.fan[data-swapping="true"] > [data-live-card]:nth-child(2),
+.private-hand[data-swapping="true"] > [data-live-card]:nth-child(2) {
+  animation: card-swap-right 0.56s cubic-bezier(0.35, 0.08, 0.25, 1) both;
+}
+@keyframes card-swap-left {
+  0% {
+    transform: translate(0, 0) rotate(-6deg);
+  }
+  45% {
+    transform: translate(55%, -14px) rotate(6deg) scale(1.06);
+    z-index: 4;
+  }
+  100% {
+    transform: translate(100%, 0) rotate(6deg);
+  }
+}
+@keyframes card-swap-right {
+  0% {
+    transform: translate(0, 0) rotate(6deg);
+  }
+  45% {
+    transform: translate(-55%, 10px) rotate(-6deg) scale(0.96);
+    z-index: 2;
+  }
+  100% {
+    transform: translate(-100%, 0) rotate(-6deg);
+  }
+}
+
+/* Sound effects toggle row inside audio popover */
+.music-sfx-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #22302d;
+  border: 1px solid #4c5a54;
+}
+.music-sfx-row b {
+  display: block;
+  font-size: 13px;
+  color: #f4e6c9;
+}
+.music-sfx-row small {
+  font-size: 11.5px;
+  color: #bfb6a7;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fan[data-swapping="true"] > [data-live-card],
+  .private-hand[data-swapping="true"] > [data-live-card] {
+    animation: none;
+  }
+}
+
+
+/* ==========================================================================
+   Fullscreen Loading Overlay with Tabletop Glass Backdrop
+   ========================================================================== */
+.screen-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.screen-loader-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(6 11 13 / 74%);
+  backdrop-filter: blur(7px);
+  animation: backdrop-fade 0.18s ease-out both;
+}
+.screen-loader-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 26px 34px;
+  border-radius: 16px;
+  border: 1px solid #9c8459aa;
+  background: linear-gradient(160deg, #1d2b28ee 0%, #131c1bf2 100%);
+  box-shadow:
+    0 20px 50px #000a,
+    inset 0 1px 0 #f6dcae26;
+  animation: sheet-rise 0.2s ease-out both;
+}
+.screen-loader-spinner {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+}
+.screen-loader-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2.5px solid #e7c1842e;
+  border-top-color: #f3cf87;
+  border-right-color: #c89b52;
+  animation: loader-spin 0.85s linear infinite;
+}
+.screen-loader-crest {
+  font: italic bold 24px Georgia, serif;
+  color: var(--gold);
+  line-height: 1;
+}
+.screen-loader-text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #f6e7c8;
+  text-align: center;
+}
+@keyframes loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .screen-loader-ring {
+    animation: none;
+    border-color: #e7c184aa;
+  }
+}
+
+
+/* ==========================================================================
+   Unified SVG Card Back (/cards/back.svg) — 100% consistent static & flying
+   ========================================================================== */
+.card-back {
+  display: block;
+  width: 32px;
+  height: 47px;
+  border: 0;
+  outline: none;
+  border-radius: 4px;
+  background: url("/cards/back.svg") center / 100% 100% no-repeat;
+  box-shadow: 0 2px 6px #0b161399;
+}
+.deck-pile .travelling-card {
+  width: auto;
+  height: auto;
+  border-radius: 7px;
+  will-change: transform;
+}
+
+
+/* ==========================================================================
+   Consistent 90dvh Minimum Tabletop Height & Clean Header-to-Table Spacing
+   ========================================================================== */
+.in-match .title {
+  margin: 14px 0 12px;
+}
+.arena {
+  min-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+}
+.arena.arena-opening {
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+}
+
+
+/* ==========================================================================
+   Lobby Card Theme Picker (1 Button + Scalable Modal)
+   ========================================================================== */
+.card-theme-picker {
+  margin: 0 0 18px;
+}
+.active-theme-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: 1px solid #6b604a;
+  background: #1a2422;
+}
+.theme-option-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.theme-option-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--paper);
+  text-align: left;
+}
+.theme-option-select:enabled:hover {
+  background: #ffffff0a;
+}
+.theme-option-card[data-readonly] .theme-option-select {
+  cursor: default;
+  opacity: 0.94;
+}
+.theme-preview-fan {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px;
+}
+.theme-preview-fan img {
+  width: 34px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #c5a76d;
+  box-shadow: 0 3px 8px #0007;
+}
+.theme-preview-fan img:first-child {
+  transform: rotate(-10deg) translateY(2px);
+}
+.theme-preview-fan img:nth-child(2) {
+  margin-left: -14px;
+  z-index: 1;
+  transform: translateY(-2px);
+}
+.theme-preview-fan img:last-child {
+  margin-left: -14px;
+  transform: rotate(10deg) translateY(2px);
+}
+.theme-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.theme-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.theme-copy b {
+  font-family: Georgia, serif;
+  font-size: 16px;
+  color: #fff3da;
+  white-space: nowrap;
+}
+.theme-copy small {
+  font-size: 12.5px;
+  line-height: 1.38;
+  color: #cdc3b3;
+}
+.theme-check {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--gold);
+  color: #261d0e;
+  font-size: 12px;
+  font-weight: 700;
+}
+.theme-gallery {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #595144;
+}
+.theme-gallery-item {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+.theme-gallery-item img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 640 / 938;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #9e8762;
+  box-shadow: 0 4px 10px #0007;
+}
+.theme-gallery-item figcaption {
+  font-size: 11px;
+  color: #dfd3bd;
+  text-align: center;
+}
+@media (max-width: 520px) {
+  .theme-option-row {
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .theme-option-select {
+    gap: 10px;
+    padding: 2px;
+  }
+  .theme-preview-fan img {
+    width: 28px;
+    height: 41px;
+  }
+  .theme-gallery {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

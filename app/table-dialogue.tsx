@@ -91,6 +91,10 @@ export function tableDialogue(
       activeProof || state.moving?.proof
         ? current.proofSlot
         : state.exposed?.proofSlot,
+    activeProofArt:
+      activeProof || state.moving?.proof
+        ? current.proofArt
+        : state.exposed?.proofArt,
     activeProof: activeProof ?? state.moving?.proof ?? state.exposed?.proof,
     proofStatus: activeProof
       ? (current.move?.kind === "replace" ? "Pembuktian " : "Membuka ") +

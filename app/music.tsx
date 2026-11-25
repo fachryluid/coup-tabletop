@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useState, useEffect, useCallback } from "react";
+import { isSfxEnabled, setSfxEnabled } from "./sound-effects";
 
 type SynthTrackId =
   | "balairung-malam"
@@ -148,6 +149,7 @@ export function Music() {
   const [error, setError] = useState(false);
   const [track, setTrack] = useState<TrackId>("meja-senja");
   const [volume, setVolume] = useState(0.35);
+  const [sfx, setSfx] = useState(true);
 
   const stopSynth = useCallback(() => {
     if (synthTimer.current !== null) {
@@ -293,6 +295,7 @@ export function Music() {
 
     setTrack(initialTrack);
     setVolume(initialVol);
+    setSfx(isSfxEnabled());
     if (player.current) player.current.volume = initialVol;
 
     // Restore where autoplay is allowed. Otherwise the switch starts playback on tap.
@@ -444,6 +447,24 @@ export function Music() {
               onChange={(e) => changeVolume(Number(e.target.value) / 100)}
             />
           </label>
+          <div className="music-sfx-row">
+            <span>
+              <b>Efek suara</b>
+              <small>Kartu, koin, klik &amp; emote</small>
+            </span>
+            <button
+              type="button"
+              className="music-toggle-btn"
+              aria-pressed={sfx}
+              onClick={() => {
+                const next = !sfx;
+                setSfx(next);
+                setSfxEnabled(next);
+              }}
+            >
+              {sfx ? "Aktif" : "Mati"}
+            </button>
+          </div>
           <div className="music-tracks" role="radiogroup" aria-label="Pilih musik">
             {MUSIC_TRACKS.map((item) => {
               const selected = item.id === track;

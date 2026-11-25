@@ -94,7 +94,13 @@ export function legal(g: Game, id: string): Move[] {
   }
   if (g.stage !== "turn" || g.turn !== id) return [];
   const others = living(g).filter((q) => q.id !== id);
-  const coups: Move[] = others.map((q) => ({ kind: "Coup", target: q.id }));
+  const coups: Move[] = others.flatMap((q) =>
+    Array.from({ length: q.hand.length }, (_, slot) => ({
+      kind: "Coup" as const,
+      target: q.id,
+      slot,
+    })),
+  );
   if (p.coins >= 10) return coups;
   const moves: Move[] = [
     { kind: "Income" },
@@ -110,8 +116,59 @@ export function legal(g: Game, id: string): Move[] {
   }
   return moves;
 }
+function alignArt(cards: Role[], arts?: number[]): number[] {
+  return cards.map((_, i) => arts?.[i] ?? 0);
+}
+function shuffleDeckWithArt(
+  deck: Role[],
+  deckArt: number[] | undefined,
+  extra: { role: Role; art: number }[],
+  rng: () => number,
+) {
+  const pairs = [
+    ...deck.map((role, i) => ({ role, art: deckArt?.[i] ?? 0 })),
+    ...extra,
+  ];
+  shuffle(pairs, rng);
+  return {
+    deck: pairs.map((c) => c.role),
+    deckArt: pairs.map((c) => c.art),
+  };
+}
+function cloneGame(state: Game): Game {
+  return {
+    ...state,
+    players: state.players.map((p) => ({
+      ...p,
+      hand: [...p.hand],
+      handArt: alignArt(p.hand, p.handArt),
+      revealed: [...p.revealed],
+      revealedArt: alignArt(p.revealed, p.revealedArt),
+    })),
+    deck: [...state.deck],
+    deckArt: alignArt(state.deck, state.deckArt),
+    config: { ...state.config },
+    action: state.action
+      ? {
+          ...state.action,
+          ...(state.action.indices ? { indices: [...state.action.indices] } : {}),
+        }
+      : undefined,
+    blocker: state.blocker ? { ...state.blocker } : undefined,
+    pending: [...state.pending],
+    loss: state.loss ? { ...state.loss } : undefined,
+    pool: [...state.pool],
+    poolArt: alignArt(state.pool, state.poolArt),
+    log: [...state.log],
+    undo: state.undo ? { ...state.undo } : undefined,
+  };
+}
+function markResolved(g: Game) {
+  const last = g.log.length - 1;
+  if (last >= 0) g.log[last] = { ...g.log[last], status: "resolved" };
+}
 function finish(g: Game) {
-  g.log[g.log.length - 1].status = "resolved";
+  markResolved(g);
   g.actionNumber++;
   const index = g.players.findIndex((p) => p.id === g.turn);
   for (let i = 1; i <= g.players.length; i++) {
@@ -128,7 +185,34 @@ function finish(g: Game) {
     pending: [],
     deadline: null,
     loss: undefined,
+    switched: false,
   });
+}
+export function switchCards(state: Game, id: string): Game {
+  if (state.paused !== null) throw Error("Permainan sedang dijeda.");
+  if (state.stage !== "turn" || state.turn !== id)
+    throw Error(
+      "Menukar posisi kartu hanya bisa dilakukan pada giliran Anda sebelum memilih aksi.",
+    );
+  const current = player(state, id);
+  if (!current || current.hand.length !== 2)
+    throw Error(
+      "Menukar posisi kartu hanya tersedia jika Anda masih memiliki 2 kartu.",
+    );
+  if (state.switched)
+    throw Error("Anda sudah menukar posisi kartu pada giliran ini.");
+  const g = cloneGame(state);
+  const p = player(g, id);
+  p.hand = [p.hand[1], p.hand[0]];
+  const arts = alignArt(p.hand, p.handArt);
+  p.handArt = [arts[1], arts[0]];
+  g.switched = true;
+  g.undo = undefined;
+  record(g, {
+    text: p.name + " menukar posisi kartunya.",
+    cardSwap: id,
+  });
+  return g;
 }
 function open(g: Game, stage: Stage, ids: string[], now: number) {
   Object.assign(g, {
@@ -147,12 +231,20 @@ function reveal(
   const p = player(g, id);
   const index =
     slot !== undefined && p.hand[slot] === role ? slot : p.hand.indexOf(role);
+  const handArt = alignArt(p.hand, p.handArt);
+  const revealedArt = alignArt(p.revealed, p.revealedArt);
+  const art = handArt.splice(index, 1)[0] ?? 0;
   p.hand.splice(index, 1);
+  p.handArt = handArt;
   p.revealed.push(role);
+  revealedArt.push(art);
+  p.revealedArt = revealedArt;
   record(g, {
     ...(spoken
       ? {
           discarded: role,
+          proofArt: art,
+          ...(slot !== undefined ? { proofSlot: slot } : {}),
           speech: {
             by: id,
             words:
@@ -177,7 +269,7 @@ function reveal(
       loss: undefined,
     });
     record(g, { text: survivors[0].name + " menang." });
-    g.log[g.log.length - 1].status = "resolved";
+    markResolved(g);
     return true;
   }
   return false;
@@ -202,11 +294,17 @@ function advance(g: Game, next: Continuation) {
   switch (g.action!.kind) {
     case "Tax":
       actor.coins += 3;
-      record(g, { text: actor.name + " menerima 3 koin dari Tax." });
+      record(g, {
+        text: actor.name + " menerima 3 koin dari Tax.",
+        coinMove: { from: "bank", to: actor.id, amount: 3 },
+      });
       break;
     case "Foreign Aid":
       actor.coins += 2;
-      record(g, { text: actor.name + " menerima 2 koin dari Foreign Aid." });
+      record(g, {
+        text: actor.name + " menerima 2 koin dari Foreign Aid.",
+        coinMove: { from: "bank", to: actor.id, amount: 2 },
+      });
       break;
     case "Steal": {
       const n = Math.min(2, victim!.coins);
@@ -215,20 +313,33 @@ function advance(g: Game, next: Continuation) {
       record(g, {
         text:
           actor.name + " mengambil " + n + " koin dari " + victim!.name + ".",
+        ...(n > 0
+          ? { coinMove: { from: victim!.id, to: actor.id, amount: n } }
+          : {}),
       });
       break;
     }
     case "Assassinate":
-    case "Coup":
       return lose(g, victim!.id, "finish");
-    case "Exchange":
+    case "Coup": {
+      const slot = g.action!.slot ?? 0;
+      const role = victim!.hand[slot];
+      if (!reveal(g, victim!.id, role, true, slot)) finish(g);
+      return;
+    }
+    case "Exchange": {
       g.stage = "exchange";
-      g.pool = [...actor.hand, ...g.deck.splice(0, 2)];
+      const drawnArts = alignArt(g.deck, g.deckArt).splice(0, 2);
+      const drawnRoles = g.deck.splice(0, 2);
+      g.deckArt = alignArt(g.deck, g.deckArt?.slice(2));
+      g.pool = [...actor.hand, ...drawnRoles];
+      g.poolArt = [...alignArt(actor.hand, actor.handArt), ...drawnArts];
       record(g, {
         text: actor.name + " mengambil dua kartu untuk Exchange.",
         deckMove: { seat: actor.id, kind: "drawTwo" },
       });
       return;
+    }
   }
   finish(g);
 }
@@ -242,11 +353,16 @@ function close(g: Game) {
 }
 export function endMatch(state: Game, host: string): Game {
   if (state.stage === "over") throw Error("Pertandingan telah selesai.");
-  const g = structuredClone(state);
+  const g = cloneGame(state);
   record(g, { text: host + " mengakhiri pertandingan tanpa pemenang." });
-  if (g.action) g.log[g.log.length - 1].status = "resolved";
+  if (g.action) markResolved(g);
   if (g.stage === "exchange") {
-    g.deck.push(...g.pool.slice(player(g, g.turn).hand.length));
+    const keepCount = player(g, g.turn).hand.length;
+    g.deck.push(...g.pool.slice(keepCount));
+    g.deckArt = [
+      ...alignArt(g.deck.slice(0, g.deck.length - (g.pool.length - keepCount)), g.deckArt),
+      ...alignArt(g.pool, g.poolArt).slice(keepCount),
+    ];
   }
   Object.assign(g, {
     stage: "over",
@@ -258,6 +374,7 @@ export function endMatch(state: Game, host: string): Game {
     loss: undefined,
     undo: undefined,
     pool: [],
+    poolArt: [],
   });
   return g;
 }
@@ -270,7 +387,7 @@ export function closeWindow(state: Game, now: number, host?: string) {
       : state.deadline === null || now < state.deadline)
   )
     throw Error("Fase tidak bisa ditutup.");
-  const g = structuredClone(state);
+  const g = cloneGame(state);
   if (host) {
     record(g, {
       text:
@@ -307,7 +424,7 @@ export function play(
       JSON.stringify(x.indices) === JSON.stringify(request.indices),
   );
   if (!m) throw Error("Pilihan tidak sah untuk fase ini.");
-  const g = structuredClone(state),
+  const g = cloneGame(state),
     p = player(g, id);
   g.undo = undefined;
   if (g.stage === "loss") {
@@ -315,12 +432,17 @@ export function play(
     g.loss = undefined;
     if (!reveal(g, id, m.role!, true)) advance(g, next);
   } else if (g.stage === "exchange") {
+    const poolArt = alignArt(g.pool, g.poolArt);
     p.hand = g.pool.filter((_, i) => m.indices!.includes(i));
-    g.deck = shuffle(
-      [...g.deck, ...g.pool.filter((_, i) => !m.indices!.includes(i))],
-      rng,
-    );
+    p.handArt = poolArt.filter((_, i) => m.indices!.includes(i));
+    const returned = g.pool
+      .map((role, i) => ({ role, art: poolArt[i] }))
+      .filter((_, i) => !m.indices!.includes(i));
+    const mixed = shuffleDeckWithArt(g.deck, g.deckArt, returned, rng);
+    g.deck = mixed.deck;
+    g.deckArt = mixed.deckArt;
     g.pool = [];
+    g.poolArt = [];
     record(g, {
       text: p.name + " selesai memilih kartu Exchange.",
       deckMove: { seat: id, kind: "returnTwo" },
@@ -331,6 +453,7 @@ export function play(
     record(g, {
       text: p.name + " pass.",
       speech: { by: id, words: declaration(m) },
+      silent: true,
     });
     g.pending = g.pending.filter((x) => x !== id);
     if (!g.pending.length) close(g);
@@ -382,9 +505,19 @@ export function play(
     if (m.kind === "Prove") {
       const role = m.role!;
       const slot = p.hand.indexOf(role);
-      g.deck.push(role);
-      shuffle(g.deck, rng);
+      const handArt = alignArt(p.hand, p.handArt);
+      const provenArt = handArt[slot] ?? 0;
+      const mixed = shuffleDeckWithArt(
+        g.deck,
+        g.deckArt,
+        [{ role, art: provenArt }],
+        rng,
+      );
+      g.deck = mixed.deck;
+      g.deckArt = mixed.deckArt;
       p.hand[slot] = g.deck.pop()!;
+      handArt[slot] = g.deckArt.pop() ?? 0;
+      p.handArt = handArt;
       record(g, {
         text:
           "Klaim " +
@@ -409,6 +542,7 @@ export function play(
         role,
         evidence: "proof",
         proofSlot: slot,
+        proofArt: provenArt,
         deckMove: { seat: id, kind: "replace", slot },
       });
       lose(g, challenger.id, "finish");
@@ -432,6 +566,24 @@ export function play(
     if (m.kind === "Assassinate") p.coins -= 3;
     const role = claims[m.kind as keyof typeof claims];
     const targetPlayer = m.target ? player(g, m.target) : undefined;
+    const coinMove =
+      m.kind === "Income"
+        ? { from: "bank", to: id, amount: 1 }
+        : m.kind === "Coup"
+          ? { from: id, to: "bank", amount: 7 }
+          : m.kind === "Assassinate"
+            ? { from: id, to: "bank", amount: 3 }
+            : undefined;
+    const slotTag =
+      targetPlayer && (m.kind === "Guess" || (m.kind === "Coup" && targetPlayer.hand.length > 1))
+        ? " [" +
+          (targetPlayer.hand.length === 1
+            ? "kartu terakhir"
+            : m.slot === 1
+              ? "kanan"
+              : "kiri") +
+          "]"
+        : "";
     record(g, {
       speech: {
         by: id,
@@ -442,19 +594,12 @@ export function play(
         " memilih " +
         m.kind +
         (targetPlayer ? " → " + targetPlayer.name : "") +
-        (m.kind === "Guess" && targetPlayer
-          ? " [" +
-            (targetPlayer.hand.length === 1
-              ? "kartu terakhir"
-              : m.slot === 1
-                ? "kanan"
-                : "kiri") +
-            "]"
-          : "") +
+        slotTag +
         (m.role ? " (" + m.role + ")" : ""),
       actor: id,
       role,
       evidence: role ? "claim" : undefined,
+      ...(coinMove ? { coinMove } : {}),
     });
     if (m.kind === "Income") {
       finish(g);
@@ -463,6 +608,8 @@ export function play(
       const victim = targetPlayer!;
       const slot = m.slot!;
       const actual = victim.hand[slot];
+      const victimArt = alignArt(victim.hand, victim.handArt);
+      const actualArt = victimArt[slot] ?? 0;
       const hit = oneTimeGuess.matches(victim, slot, m.role!);
       if (hit) {
         const words =
@@ -478,15 +625,24 @@ export function play(
           speech: { by: victim.id, words },
           revealedGuess: actual,
           proofSlot: slot,
+          proofArt: actualArt,
         });
         record(g, {
           text: "Tebakan " + p.name + " benar.",
         });
         if (!reveal(g, victim.id, actual, false, slot)) finish(g);
       } else {
-        g.deck.push(actual);
-        shuffle(g.deck, rng);
+        const mixed = shuffleDeckWithArt(
+          g.deck,
+          g.deckArt,
+          [{ role: actual, art: actualArt }],
+          rng,
+        );
+        g.deck = mixed.deck;
+        g.deckArt = mixed.deckArt;
         victim.hand[slot] = g.deck.pop()!;
+        victimArt[slot] = g.deckArt.pop() ?? 0;
+        victim.handArt = victimArt;
         const words =
           "Tebakan " +
           p.name +
@@ -508,6 +664,7 @@ export function play(
           role: actual,
           evidence: "proof",
           proofSlot: slot,
+          proofArt: actualArt,
           deckMove: { seat: victim.id, kind: "replace", slot },
         });
         record(g, {

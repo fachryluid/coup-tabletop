@@ -94,6 +94,7 @@ it("rejects an out-of-order event stream before updating dialogue", () => {
     serverTime: 1,
     seats: [],
     config: defaults,
+    cardTheme: "classic",
     game: observe(g, "A"),
   });
   const state = playback(initialPlayback, {
@@ -204,6 +205,7 @@ it("ignores a different game log at an already accepted revision", () => {
     serverTime: 1,
     seats: [],
     config: defaults,
+    cardTheme: "classic",
     game: observe(start, "A"),
   };
   const s = playback(initialPlayback, {

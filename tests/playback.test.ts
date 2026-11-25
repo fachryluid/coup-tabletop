@@ -14,6 +14,7 @@ function snapshot(game: Game, revision: number): RoomView {
     host: "A",
     seats,
     config: game.config,
+    cardTheme: game.cardTheme ?? "classic",
     serverTime: 100,
   };
 }
@@ -115,4 +116,50 @@ it("reveals a proven role, reads confirmation and waits for delivery even throug
   s = playback(s, { type: "delivered", line });
   expect(s.room?.game?.stage).toBe("loss");
   expect(s.room?.game?.legal[0].kind).toBe("Lose");
+});
+
+it("keeps Pass recorded in game.log without creating a table dialogue bubble", () => {
+  const threeSeats = ["A", "B", "C"].map((id) => ({
+    id,
+    name: id,
+    online: true,
+  }));
+  const snap3 = (game: Game, revision: number): RoomView => ({
+    game: observe(game, "C"),
+    revision,
+    code: "ROOM",
+    me: "C",
+    host: "A",
+    seats: threeSeats,
+    config: game.config,
+    cardTheme: game.cardTheme ?? "classic",
+    serverTime: 100,
+  });
+
+  const start = deal(threeSeats, defaults, rng);
+  const tax = play(start, "A", { kind: "Tax" }, 10, rng);
+  const passB = play(tax, "B", { kind: "Pass" }, 20, rng);
+  const passC = play(passB, "C", { kind: "Pass" }, 30, rng);
+
+  // Start -> Tax played & read
+  let s = receive(initialPlayback, snap3(start, 1), true);
+  s = receive(s, snap3(tax, 2));
+  s = read(s);
+  expect(s.frames).toHaveLength(0);
+  const linesBeforePass = s.lines.length;
+
+  // B passes while C is still pending: recorded in log, no dialogue bubble, C immediately gets legal moves
+  s = receive(s, snap3(passB, 3));
+  expect(s.lines).toHaveLength(linesBeforePass);
+  expect(s.frames).toHaveLength(0);
+  expect(s.room?.revision).toBe(3);
+  expect(s.room?.game?.log.some((e) => e.text === "B pass.")).toBe(true);
+  expect(s.room?.game?.legal.some((m) => m.kind === "Pass")).toBe(true);
+
+  // C passes to resolve Tax: C's Pass stays in log, dialogue jumps straight to "+3 koin dari Tax"
+  s = receive(s, snap3(passC, 4));
+  expect(s.lines).toHaveLength(linesBeforePass + 1);
+  expect(s.lines[s.cursor].words).toContain("menerima 3 koin dari Tax");
+  expect(s.lines.some((l) => l.words.includes("Saya pass"))).toBe(false);
+  expect(s.latest?.game?.log.some((e) => e.text === "C pass.")).toBe(true);
 });

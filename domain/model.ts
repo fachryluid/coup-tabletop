@@ -1,3 +1,4 @@
+import type { CardThemeId } from "./card-themes";
 export const roles = [
   "Duke",
   "Assassin",
@@ -17,7 +18,9 @@ export type Seat = { id: string; name: string; difficulty?: Difficulty };
 export type Player = Seat & {
   coins: number;
   hand: Role[];
+  handArt?: number[];
   revealed: Role[];
+  revealedArt?: number[];
   used: boolean;
 };
 export type Action =
@@ -66,6 +69,7 @@ export type Continuation = "finish" | "resolve";
 export type Entry = {
   revealedGuess?: Role;
   proofSlot?: number;
+  proofArt?: number;
   discarded?: Role;
   blockedAction?: Action;
   deckMove?: {
@@ -73,6 +77,13 @@ export type Entry = {
     kind: "drawTwo" | "returnTwo" | "replace";
     slot?: number;
   };
+  coinMove?: {
+    from: string;
+    to: string;
+    amount: number;
+  };
+  cardSwap?: string;
+  silent?: boolean;
   speech?: { by: string; words: string };
   text: string;
   actor?: string;
@@ -93,7 +104,9 @@ export interface Game {
   actionNumber: number;
   players: Player[];
   deck: Role[];
+  deckArt?: number[];
   config: Config;
+  cardTheme?: CardThemeId;
   turn: string;
   stage: Stage;
   action?: Move;
@@ -103,10 +116,12 @@ export interface Game {
   deadline: number | null;
   loss?: { id: string; next: Continuation };
   pool: Role[];
+  poolArt?: number[];
   winner?: string;
   log: GameEvent[];
   paused: number | null;
   undo?: { id: string; coins: number };
+  switched?: boolean;
 }
 export function phaseStamp(g: Game): PhaseStamp {
   return { actionId: g.matchId + "/" + g.actionNumber, phase: g.stage };
@@ -147,6 +162,7 @@ export function deal(
   config: Config,
   rng: () => number,
   matchId = "fixture",
+  cardTheme: CardThemeId = "classic",
 ): Game {
   if (
     seats.length < 2 ||
@@ -154,25 +170,38 @@ export function deal(
     new Set(seats.map((s) => s.id)).size !== seats.length
   )
     throw Error("Jumlah kursi tidak sah.");
-  const deck = shuffle([...roles, ...roles, ...roles], rng);
+  // Each of the 5 roles has 3 physical copies with distinct art indices (0, 1, 2).
+  const cards = shuffle(
+    [0, 1, 2].flatMap((art) => roles.map((role) => ({ role, art }))),
+    rng,
+  );
   const game: Game = {
     matchId,
     actionNumber: 1,
-    players: seats.map((s) => ({
-      ...s,
-      coins: 2,
-      hand: deck.splice(0, 2),
-      revealed: [],
-      used: false,
-    })),
-    deck,
+    players: seats.map((s) => {
+      const dealt = cards.splice(0, 2);
+      return {
+        ...s,
+        coins: 2,
+        hand: dealt.map((c) => c.role),
+        handArt: dealt.map((c) => c.art),
+        revealed: [],
+        revealedArt: [],
+        used: false,
+      };
+    }),
+    deck: cards.map((c) => c.role),
+    deckArt: cards.map((c) => c.art),
     config: { ...config },
+    cardTheme,
     turn: seats[0].id,
     stage: "turn",
     pending: [],
     deadline: null,
     pool: [],
+    poolArt: [],
     paused: null,
+    switched: false,
     log: [],
   };
   record(game, { text: "Kartu dibagikan. Pertandingan dimulai." });

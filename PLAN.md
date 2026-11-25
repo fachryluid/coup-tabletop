@@ -71,7 +71,8 @@ Bangun web game multiplayer **Coup Digital Tabletop** untuk dimainkan bersama te
 - Setiap pemain mulai dengan 2 kartu influence tertutup dan 2 koin.
 - Income: +1 koin, tidak bisa diblokir.
 - Foreign Aid: +2 koin, dapat diblokir oleh klaim Duke.
-- Coup: bayar 7 koin, target kehilangan 1 influence; bila mengawali giliran dengan >=10 koin wajib Coup.
+- Coup: bayar 7 koin, gugurkan 1 influence target; jika target masih memiliki 2 kartu, pelaku memilih kartu kiri atau kanan yang digugurkan secara langsung. Bila mengawali giliran dengan >=10 koin wajib Coup.
+- Switch (tukar posisi kartu): pemain yang masih memiliki 2 kartu pengaruh hidup dapat menukar posisi kartu kiri dan kanannya maksimal sekali per giliran sebelum memilih aksi utama (tidak menghabiskan giliran dan tidak memengaruhi aksi lain); kesempatan tersedia kembali pada giliran berikutnya.
 - Tax (klaim Duke): +3 koin.
 - Assassinate (klaim Assassin): bayar 3 koin untuk menargetkan kehilangan 1 influence; dapat diblokir klaim Contessa.
 - Steal (klaim Captain): curi hingga 2 koin dari target; dapat diblokir klaim Captain/Ambassador.

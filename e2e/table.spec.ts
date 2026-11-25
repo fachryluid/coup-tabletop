@@ -37,6 +37,10 @@ test("solo vs computer sampai game over dan rematch", async ({ page }) => {
     if (await coup.count()) {
       await coup.click();
       await choices.filter({ hasText: /Coup · Computer/ }).click();
+      const leftCard = page.getByRole("button", { name: "Kartu kiri" });
+      if (await leftCard.isVisible().catch(() => false)) {
+        await leftCard.click();
+      }
     } else {
       const tax = choices.filter({ hasText: /^Tax/ });
       const challenge = page.getByRole("button", {

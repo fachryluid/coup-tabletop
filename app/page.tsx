@@ -4,6 +4,8 @@ import { io, type Socket } from "socket.io-client";
 import { windows, type Difficulty } from "../domain/model";
 import { MatchHistory } from "./match-history";
 import { ExtraRules } from "./extra-rules";
+import { CardThemePicker } from "./card-theme-picker";
+import { CARD_THEME_MAP } from "../domain/card-themes";
 import { ActionOverlay } from "./action-overlay";
 import { MatchOverOverlay } from "./match-over-overlay";
 import type { RoomView } from "../domain/view";
@@ -12,6 +14,18 @@ import type { Command } from "../server/rooms";
 import { FullscreenButton } from "./fullscreen";
 import { VoiceChat } from "./voice-chat";
 import { Music } from "./music";
+import { EmoteControl } from "./emote-control";
+import { HowToPlay } from "./how-to-play";
+import { coinTransferDuration } from "./coin-table";
+import {
+  playCardPlace,
+  playCardSwap,
+  playChallengeHit,
+  playEmoteSound,
+  playUiClick,
+  warmUpSfx,
+} from "./sound-effects";
+import type { EmotePayload } from "../domain/emotes";
 import { initialPlayback, playback, type Line } from "./table-playback";
 import { tableDialogue } from "./table-dialogue";
 import { TableScene } from "./table-scene";
@@ -24,23 +38,81 @@ export default function Table() {
   const bubbleRef = useRef<HTMLDivElement>(null);
   const revealing = !!reading?.proof && presentation.revealed !== reading;
   const moving = presentation.moving;
+  const [coinLaunch, setCoinLaunch] = useState<{
+    sceneKey: number;
+    seq: number;
+    move: NonNullable<Line["coinMove"]>;
+  } | null>(null);
+  const lineAudioKey = useRef("");
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      warmUpSfx();
+      const target = e.target as HTMLElement | null;
+      const control = target?.closest<HTMLElement>(
+        "button:not(:disabled), summary, input[type='checkbox']:not(:disabled)",
+      );
+      if (!control) return;
+      if (
+        control.classList.contains("hand-card") ||
+        control.classList.contains("emote-option")
+      )
+        return;
+      playUiClick();
+    };
+    document.addEventListener("pointerdown", onPointerDown, { passive: true });
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, []);
+  useEffect(() => {
+    if (!reading || reading.seq === undefined) return;
+    const key = presentation.sceneKey + ":" + reading.seq;
+    if (lineAudioKey.current === key) return;
+    lineAudioKey.current = key;
+    if (reading.cardSwap) {
+      playCardSwap();
+    } else if (reading.proof) {
+      playCardPlace();
+    } else if (
+      reading.words.includes("menantang") ||
+      reading.words.includes("melakukan Coup")
+    ) {
+      playChallengeHit();
+    }
+  }, [reading, presentation.sceneKey]);
   useEffect(() => {
     const bubble = bubbleRef.current;
     if (!reading || !bubble || moving) return;
     const duration = revealing
       ? 1500
-      : Math.min(8000, Math.max(2200, reading.words.length * 65));
+      : reading.cardSwap
+        ? 1100
+        : Math.min(8000, Math.max(2200, reading.words.length * 65));
+    const coinMove = !revealing ? reading.coinMove : undefined;
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const coinFlightMs =
+      coinMove && !reducedMotion ? coinTransferDuration(coinMove.amount) : 0;
+    const coinStartDelay =
+      coinFlightMs > 0 ? Math.max(450, duration - coinFlightMs) : -1;
     const content = bubble.querySelector("blockquote") ?? bubble;
     let visible = false;
     let timer: ReturnType<typeof setTimeout>;
+    let coinTimer: ReturnType<typeof setTimeout>;
     function schedule() {
       clearTimeout(timer);
-      if (visible && !document.hidden && reading)
+      clearTimeout(coinTimer);
+      if (visible && !document.hidden && reading) {
+        if (coinStartDelay >= 0 && coinMove && reading.seq !== undefined) {
+          const seq = reading.seq;
+          const sceneKey = presentation.sceneKey;
+          coinTimer = setTimeout(() => {
+            setCoinLaunch({ sceneKey, seq, move: coinMove });
+          }, coinStartDelay);
+        }
         timer = setTimeout(
           () =>
             dispatch({ type: revealing ? "reveal" : "read", line: reading }),
-          duration,
+          coinFlightMs > 0 ? coinStartDelay + coinFlightMs + 25 : duration,
         );
+      }
     }
     content.scrollIntoView({
       block: "nearest",
@@ -58,10 +130,11 @@ export default function Table() {
     document.addEventListener("visibilitychange", schedule);
     return () => {
       clearTimeout(timer);
+      clearTimeout(coinTimer);
       observer.disconnect();
       document.removeEventListener("visibilitychange", schedule);
     };
-  }, [reading, revealing, moving]);
+  }, [reading, revealing, moving, presentation.sceneKey]);
   const onDelivery = useCallback(
     (line: Line) => dispatch({ type: "delivered", line }),
     [],
@@ -69,7 +142,17 @@ export default function Table() {
   const dialogue = tableDialogue(presentation, dispatch, bubbleRef);
   const [online, setOnline] = useState(false),
     [busy, setBusy] = useState(false),
+    [loadingLabel, setLoadingLabel] = useState(""),
+    [slowBusy, setSlowBusy] = useState(false),
     [error, setError] = useState("");
+  useEffect(() => {
+    if (!busy) {
+      setSlowBusy(false);
+      return;
+    }
+    const id = setTimeout(() => setSlowBusy(true), 180);
+    return () => clearTimeout(id);
+  }, [busy]);
   const [name, setName] = useState(""),
     [code, setCode] = useState(""),
     [clock, setClock] = useState(0);
@@ -83,16 +166,40 @@ export default function Table() {
   const [renaming, setRenaming] = useState(false),
     [nextName, setNextName] = useState("");
   const [hiddenRevision, setHiddenRevision] = useState<number | null>(null);
+  const [emotes, setEmotes] = useState<Record<string, EmotePayload>>({});
+  const emoteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
   useEffect(() => {
     const socket = io({ autoConnect: false });
     sock.current = socket;
+    const timers = emoteTimers.current;
     let restore = true;
+    socket.on("emote", (payload: EmotePayload) => {
+      playEmoteSound(payload.emote);
+      setEmotes((prev) => ({ ...prev, [payload.seatId]: payload }));
+      const prevTimer = timers.get(payload.seatId);
+      if (prevTimer) clearTimeout(prevTimer);
+      timers.set(
+        payload.seatId,
+        setTimeout(() => {
+          timers.delete(payload.seatId);
+          setEmotes((prev) => {
+            if (prev[payload.seatId]?.ts !== payload.ts) return prev;
+            const copy = { ...prev };
+            delete copy[payload.seatId];
+            return copy;
+          });
+        }, 3200),
+      );
+    });
     socket.on("left", () => {
       localStorage.removeItem(
         "coup:" + new URLSearchParams(location.search).get("room"),
       );
       history.replaceState(null, "", "/");
       dispatch({ type: "clear" });
+      setEmotes({});
       setCode("");
       setMenu("home");
     });
@@ -115,11 +222,13 @@ export default function Table() {
       const token = roomCode && localStorage.getItem("coup:" + roomCode);
       if (token) {
         setBusy(true);
+        setLoadingLabel("Memulihkan sesi meja…");
         socket.emit(
           "enter",
           { type: "restore", code: roomCode, token },
           (r: Reply) => {
             setBusy(false);
+            setLoadingLabel("");
             if (!r.ok) {
               setError(r.error ?? "Sesi berakhir.");
               dispatch({ type: "clear" });
@@ -132,6 +241,7 @@ export default function Table() {
     socket.on("disconnect", () => {
       setOnline(false);
       setBusy(false);
+      setLoadingLabel("");
     });
     socket.on("connect_error", () =>
       setError("Server belum terhubung. Mencoba kembali…"),
@@ -139,6 +249,8 @@ export default function Table() {
     socket.connect();
 
     return () => {
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
       socket.disconnect();
     };
   }, []);
@@ -159,7 +271,11 @@ export default function Table() {
     const liveControl = cmd.type === "pause" || cmd.type === "endMatch";
     if (liveControl && latest.matchRevision !== room.matchRevision) return;
     if (frames.length && !liveControl) return;
-    if (cmd.type === "play" && cursor !== lines.length - 1) return;
+    if (
+      (cmd.type === "play" || cmd.type === "switch") &&
+      cursor !== lines.length - 1
+    )
+      return;
     setBusy(true);
     setError("");
     sock.current!.emit(
@@ -178,18 +294,48 @@ export default function Table() {
     );
   }
   const drawer = useRef<HTMLDialogElement>(null);
+  function returnHome() {
+    if (!room) {
+      setMenu("home");
+      setError("");
+      return;
+    }
+    if (!room.game && room.me !== room.host) {
+      drawer.current?.close();
+      send({ type: "leave" });
+      return;
+    }
+    const promptText = room.game
+      ? "Kembali ke halaman awal? Pertandingan tetap berjalan dan Anda dapat kembali lewat tautan undangan."
+      : "Kembali ke halaman awal dan tinggalkan tampilan lobi ini?";
+    if (!window.confirm(promptText)) return;
+    drawer.current?.close();
+    history.replaceState(null, "", "/");
+    dispatch({ type: "clear" });
+    setEmotes({});
+    setCode("");
+    setError("");
+    setMenu("home");
+    const socket = sock.current;
+    if (socket) {
+      socket.disconnect();
+      socket.connect();
+    }
+  }
   function enter(join: boolean) {
     if (!name.trim()) {
       setError("Masukkan nama pemain.");
       return;
     }
     setBusy(true);
+    setLoadingLabel(join ? "Bergabung ke meja…" : "Membuat meja privat…");
     setError("");
     sock.current!.emit(
       "enter",
       join ? { type: "join", code, name } : { type: "create", name },
       (r: Reply) => {
         setBusy(false);
+        setLoadingLabel("");
         if (!r.ok) {
           setError(r.error!);
           return;
@@ -377,8 +523,14 @@ export default function Table() {
       )}
     </aside>
   );
+  const onTable = !!g || (!!room && frames.length > 0);
+  const loaderText = !online
+    ? "Menghubungkan ke meja…"
+    : loadingLabel || (slowBusy ? "Memproses…" : "");
   return (
-    <main className={g ? "in-match" : room ? "lobby-screen" : "start-screen"}>
+    <main
+      className={onTable ? "in-match" : room ? "lobby-screen" : "start-screen"}
+    >
       <header>
         <b className="mark" aria-hidden="true">
           C
@@ -387,8 +539,33 @@ export default function Table() {
         <div className="table-dock" role="group" aria-label="Kontrol tampilan">
           <FullscreenButton />
           <Music />
+          {room && g && online && sock.current && (
+            <EmoteControl key={"emote-" + room.code + room.me} socket={sock.current} />
+          )}
           {room && online && sock.current && (
             <VoiceChat key={room.code + room.me} socket={sock.current} />
+          )}
+          {room && (
+            <button
+              type="button"
+              onClick={returnHome}
+              aria-label="Kembali ke halaman awal"
+              title="Kembali ke halaman awal"
+            >
+              <svg
+                aria-hidden="true"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5.5v-6.5h-5V21H4a1 1 0 0 1-1-1v-9.5Z" />
+              </svg>
+            </button>
           )}
           {room && (
             <button
@@ -416,116 +593,164 @@ export default function Table() {
         </div>
       </header>
       {error && <p role="alert">{error}</p>}
-      {!online && <p role="status">Menghubungkan ke meja…</p>}
       <fieldset disabled={!online || busy} data-revision={room?.revision}>
         {!room ? (
-          <article className="start-stage">
-            <div
-              className="start-art"
-              aria-hidden="true"
-              data-playing={menu === "home"}
-            >
-              {["contessa", "captain", "duke", "assassin", "ambassador"].map(
-                (role, index, slides) => (
-                  <span
-                    key={role}
-                    className="start-slide"
-                    style={{
-                      backgroundImage: "url(/cards/" + role + ".webp)",
-                      animationDelay:
-                        -((slides.length - index) % slides.length) * 6 + "s",
-                    }}
-                  />
-                ),
-              )}
-            </div>
-            <div className="start-content">
-              {menu === "home" ? (
-                <>
-                  <h1 className="game-title">Coup</h1>
-                  <p>Meja privat · 2–6 pemain</p>
-                  <div className="start-commands">
-                    <button
-                      className="primary"
-                      onClick={() => {
-                        setError("");
-                        setMenu("create");
+          <>
+            <article className="start-stage">
+              <div
+                className="start-art"
+                aria-hidden="true"
+                data-playing={menu === "home"}
+              >
+                {["contessa", "captain", "duke", "assassin", "ambassador"].map(
+                  (role, index, slides) => (
+                    <span
+                      key={role}
+                      className="start-slide"
+                      style={{
+                        backgroundImage: "url(/cards/" + role + ".webp)",
+                        animationDelay:
+                          -((slides.length - index) % slides.length) * 6 + "s",
                       }}
-                    >
-                      Buat meja privat <span aria-hidden="true">→</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setError("");
-                        setMenu("join");
-                      }}
-                    >
-                      Masuk dengan kode <span aria-hidden="true">→</span>
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <form
-                  className="setup-form"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    enter(menu === "join");
-                  }}
-                >
-                  <button
-                    className="menu-back"
-                    type="button"
-                    onClick={() => {
-                      setMenu("home");
-                      setError("");
+                    />
+                  ),
+                )}
+              </div>
+              <div className="start-content">
+                {menu === "home" ? (
+                  <>
+                    <h1 className="game-title">Coup</h1>
+                    <p>Meja privat · 2–6 pemain</p>
+                    <div className="start-commands">
+                      <button
+                        className="primary"
+                        onClick={() => {
+                          setError("");
+                          setMenu("create");
+                        }}
+                      >
+                        Buat meja privat <span aria-hidden="true">→</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setError("");
+                          setMenu("join");
+                        }}
+                      >
+                        Masuk dengan kode <span aria-hidden="true">→</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="start-guide-btn"
+                        onClick={() => {
+                          document
+                            .getElementById("cara-bermain")
+                            ?.scrollIntoView({ behavior: "smooth" });
+                        }}
+                      >
+                        Cara bermain <span aria-hidden="true">↓</span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <form
+                    className="setup-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      enter(menu === "join");
                     }}
                   >
-                    ← Menu awal
-                  </button>
-                  <h1>{menu === "create" ? "Buat meja" : "Gabung meja"}</h1>
-                  <label>
-                    Nama pemain
-                    <input
-                      className="nickname-field"
-                      placeholder="Nama panggilan"
-                      autoFocus
-                      required
-                      maxLength={32}
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      autoComplete="nickname"
-                    />
-                  </label>
-                  {menu === "join" && (
+                    <button
+                      className="menu-back"
+                      type="button"
+                      onClick={() => {
+                        setMenu("home");
+                        setError("");
+                      }}
+                    >
+                      ← Menu awal
+                    </button>
+                    <h1>{menu === "create" ? "Buat meja" : "Gabung meja"}</h1>
                     <label>
-                      Kode undangan
+                      Nama pemain
                       <input
+                        className="nickname-field"
+                        placeholder="Nama panggilan"
+                        autoFocus
                         required
-                        className="invite-field"
-                        placeholder="Kode dari host"
-                        maxLength={10}
-                        value={code}
-                        onChange={(e) =>
-                          setCode(e.target.value.trim().toUpperCase())
-                        }
-                        autoCapitalize="characters"
-                        spellCheck={false}
+                        maxLength={32}
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        autoComplete="nickname"
                       />
                     </label>
-                  )}
-                  <button className="primary" type="submit">
-                    {menu === "create" ? "Buat room" : "Gabung room"}{" "}
-                    <span aria-hidden="true">→</span>
-                  </button>
-                </form>
-              )}
-            </div>
-          </article>
+                    {menu === "join" && (
+                      <label>
+                        Kode undangan
+                        <input
+                          required
+                          className="invite-field"
+                          placeholder="Kode dari host"
+                          maxLength={10}
+                          value={code}
+                          onChange={(e) =>
+                            setCode(e.target.value.trim().toUpperCase())
+                          }
+                          autoCapitalize="characters"
+                          spellCheck={false}
+                        />
+                      </label>
+                    )}
+                    <button className="primary" type="submit">
+                      {menu === "create" ? "Buat room" : "Gabung room"}{" "}
+                      <span aria-hidden="true">→</span>
+                    </button>
+                  </form>
+                )}
+              </div>
+            </article>
+            {menu === "home" && (
+              <HowToPlay
+                onStart={() => {
+                  setError("");
+                  setMenu("create");
+                  document
+                    .querySelector(".start-stage")
+                    ?.scrollIntoView({ behavior: "smooth" });
+                }}
+              />
+            )}
+          </>
         ) : !room.game && frames.length ? (
-          <div className="arena">
-            {dialogue.bubble}
-            {dialogue.controls}
-          </div>
+          <>
+            <div className="title">
+              <div>
+                <small>Meja privat · {room.code}</small>
+              </div>
+              <small>
+                {room.seats.length} pemain ·{" "}
+                {(frames[0]?.room.game?.config ?? room.config).timer
+                  ? "Timer 30 dtk"
+                  : "Timer mati"}
+                {(frames[0]?.room.game?.config ?? room.config).one_time_guess
+                  ? " · One-Time Guess"
+                  : ""}
+                {(frames[0]?.room.game?.config ?? room.config).duke_blocks_tax
+                  ? " · Duke Blocks Tax"
+                  : ""}
+                {(frames[0]?.room.cardTheme ?? room.cardTheme) !== "classic"
+                  ? " · " +
+                    CARD_THEME_MAP[
+                      frames[0]?.room.cardTheme ?? room.cardTheme
+                    ].name
+                  : ""}
+              </small>
+            </div>
+            <div className="arena arena-opening">
+              {dialogue.bubble}
+              {dialogue.controls}
+            </div>
+          </>
         ) : (
           <>
             <div className="title">
@@ -539,49 +764,74 @@ export default function Table() {
                   {g.config.timer ? "Timer 30 dtk" : "Timer mati"}
                   {g.config.one_time_guess ? " · One-Time Guess" : ""}
                   {g.config.duke_blocks_tax ? " · Duke Blocks Tax" : ""}
+                  {g.cardTheme !== "classic"
+                    ? " · " + CARD_THEME_MAP[g.cardTheme].name
+                    : ""}
                 </small>
               )}
               {!g && (
-                <button
-                  type="button"
-                  className="icon-btn invite-copy-btn"
-                  data-copied={copied || undefined}
-                  aria-label={copied ? "Tautan disalin" : "Salin undangan"}
-                  title={copied ? "Tautan disalin" : "Salin tautan undangan"}
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(location.href);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2400);
-                    } catch {
-                      setError(
-                        "Salin alamat halaman ini untuk mengundang teman.",
-                      );
-                    }
-                  }}
-                >
-                  <svg
-                    aria-hidden="true"
-                    width="19"
-                    height="19"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                <div className="lobby-title-actions">
+                  <button
+                    type="button"
+                    className="with-icon lobby-home-btn"
+                    onClick={returnHome}
                   >
-                    {copied ? (
-                      <path d="M20 6 9 17l-5-5" />
-                    ) : (
-                      <>
-                        <rect x="9" y="9" width="13" height="13" rx="2" />
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                      </>
-                    )}
-                  </svg>
-                  {copied && <span className="copy-toast">Disalin</span>}
-                </button>
+                    <svg
+                      aria-hidden="true"
+                      width="17"
+                      height="17"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="m15 18-6-6 6-6" />
+                    </svg>
+                    <span>Halaman awal</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn invite-copy-btn"
+                    data-copied={copied || undefined}
+                    aria-label={copied ? "Tautan disalin" : "Salin undangan"}
+                    title={copied ? "Tautan disalin" : "Salin tautan undangan"}
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(location.href);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2400);
+                      } catch {
+                        setError(
+                          "Salin alamat halaman ini untuk mengundang teman.",
+                        );
+                      }
+                    }}
+                  >
+                    <svg
+                      aria-hidden="true"
+                      width="19"
+                      height="19"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      {copied ? (
+                        <path d="M20 6 9 17l-5-5" />
+                      ) : (
+                        <>
+                          <rect x="9" y="9" width="13" height="13" rx="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </>
+                      )}
+                    </svg>
+                    {copied && <span className="copy-toast">Disalin</span>}
+                  </button>
+                </div>
               )}
             </div>
             <div className="columns">
@@ -594,6 +844,18 @@ export default function Table() {
                     showDeal={presentation.deal}
                     dialogue={dialogue}
                     moving={moving}
+                    activeCoinMove={
+                      coinLaunch && coinLaunch.sceneKey === presentation.sceneKey
+                        ? coinLaunch
+                        : undefined
+                    }
+                    swappingSeat={reading?.cardSwap}
+                    onSwitch={
+                      canAct && g.canSwitch
+                        ? () => send({ type: "switch" })
+                        : undefined
+                    }
+                    emotes={emotes}
                     onDelivery={onDelivery}
                   >
                     {canAct && actionHidden && (
@@ -893,6 +1155,11 @@ export default function Table() {
               </div>
               {!g && (
                 <section className="lobby-rules-section">
+                  <CardThemePicker
+                    value={room.cardTheme}
+                    editable={host}
+                    onChange={(value) => send({ type: "theme", value })}
+                  />
                   <ExtraRules
                     values={room.config}
                     editable={host}
@@ -934,6 +1201,7 @@ export default function Table() {
           host={host}
           send={send}
           onHide={() => setHiddenRevision(room.revision)}
+          onReturnHome={returnHome}
         />
       )}
       {room && (
@@ -956,8 +1224,44 @@ export default function Table() {
             </button>
           </div>
           <fieldset disabled={!online || busy}>{tableTools}</fieldset>
-          <a href="/">Meja lain</a>
+          <button
+            type="button"
+            className="drawer-home-btn with-icon"
+            onClick={returnHome}
+          >
+            <svg
+              aria-hidden="true"
+              width="17"
+              height="17"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5.5v-6.5h-5V21H4a1 1 0 0 1-1-1v-9.5Z" />
+            </svg>
+            <span>Kembali ke halaman awal</span>
+          </button>
         </dialog>
+      )}
+      {loaderText && (
+        <div
+          className="screen-loader"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="screen-loader-backdrop" aria-hidden="true" />
+          <div className="screen-loader-card">
+            <span className="screen-loader-spinner" aria-hidden="true">
+              <span className="screen-loader-ring" />
+              <b className="screen-loader-crest">C</b>
+            </span>
+            <p className="screen-loader-text">{loaderText}</p>
+          </div>
+        </div>
       )}
     </main>
   );

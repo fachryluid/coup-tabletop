@@ -45,7 +45,7 @@ test("Steal menjelaskan pelaku, target, peran dan siapa yang merespons", async (
     );
     await expect(
       guest
-        .locator(".arena .choices")
+        .locator(".choices")
         .getByRole("button", { name: "Challenge", exact: true }),
     ).toBeVisible();
     await expect
@@ -56,7 +56,7 @@ test("Steal menjelaskan pelaku, target, peran dan siapa yang merespons", async (
           .evaluate((el) => (el as HTMLImageElement).naturalWidth),
       )
       .toBeGreaterThan(0);
-    await expect(guest.locator(".arena .choices button b")).toHaveText([
+    await expect(guest.locator(".choices button b")).toHaveText([
       "Pass",
       "Challenge",
       "Block · Ambassador",
@@ -67,13 +67,16 @@ test("Steal menjelaskan pelaku, target, peran dan siapa yang merespons", async (
         guest.getByRole("button", { name: "Block · " + role }),
       ).toBeVisible();
     await guest.getByRole("button", { name: "Pass", exact: true }).click();
-    await expect(guest.locator(".my-dialogue blockquote")).toContainText(
-      "Saya pass",
-    );
+    await expect(guest.locator(".my-dialogue blockquote")).toHaveCount(0);
     await expect(guest.getByRole("button", { name: /^Income/ })).toBeVisible();
     await expect(guest.locator(".player-area .balance")).toContainText(
       "0 koin",
     );
+    await guest.getByRole("button", { name: "Menu meja" }).click();
+    const menu = guest.getByRole("dialog", { name: "Menu meja" });
+    await menu.getByText("Riwayat meja", { exact: true }).click();
+    await expect(menu.locator(".history")).toContainText("Bima pass.");
+    await menu.getByRole("button", { name: "Tutup", exact: true }).click();
   } finally {
     await third.close();
     await ctx.close();

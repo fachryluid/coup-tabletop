@@ -18,10 +18,20 @@ export function declaration(
         target +
         "."
       );
-    case "Coup":
+    case "Coup": {
+      const cardLabel =
+        targetCards === 1
+          ? ""
+          : move.slot === 1
+            ? "kartu kanan "
+            : "kartu kiri ";
       return (
-        "Saya membayar 7 koin untuk melakukan Coup terhadap " + target + "."
+        "Saya membayar 7 koin untuk melakukan Coup terhadap " +
+        cardLabel +
+        target +
+        "."
       );
+    }
     case "Assassinate":
       return (
         "Saya mengaku sebagai Assassin. Saya membayar 3 koin untuk menggugurkan satu influence " +

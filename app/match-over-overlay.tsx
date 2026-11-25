@@ -147,11 +147,13 @@ export function MatchOverOverlay({
   host,
   send,
   onHide,
+  onReturnHome,
 }: {
   room: RoomView;
   host: boolean;
   send: (cmd: Command) => void;
   onHide: () => void;
+  onReturnHome: () => void;
 }) {
   const g = room.game!;
   const winner = g.winner
@@ -385,6 +387,27 @@ export function MatchOverOverlay({
               Menunggu host memulai partai berikutnya atau kembali ke lobi…
             </span>
           )}
+          <button
+            type="button"
+            className="with-icon over-home-btn"
+            onClick={onReturnHome}
+          >
+            <svg
+              aria-hidden="true"
+              width="17"
+              height="17"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="m16 17 5-5-5-5M21 12H9" />
+            </svg>
+            <span>Halaman awal</span>
+          </button>
         </footer>
       </div>
     </div>

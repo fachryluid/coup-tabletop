@@ -8,22 +8,30 @@ export type Line = {
   words: string;
   proof?: Role;
   proofSlot?: number;
+  proofArt?: number;
   guessed?: boolean;
   move?: Entry["deckMove"];
+  coinMove?: Entry["coinMove"];
+  cardSwap?: string;
 };
 function narrate(entries: GameEvent[]): Line[] {
-  return entries.map((entry) => ({
-    seq: entry.seq,
-    actionId: entry.actionId,
-    ...(entry.speech ?? { words: entry.text }),
-    proof:
-      entry.discarded ??
-      entry.revealedGuess ??
-      (entry.evidence === "proof" ? entry.role : undefined),
-    proofSlot: entry.proofSlot,
-    guessed: !!entry.revealedGuess,
-    move: entry.deckMove,
-  }));
+  return entries
+    .filter((entry) => !entry.silent)
+    .map((entry) => ({
+      seq: entry.seq,
+      actionId: entry.actionId,
+      ...(entry.speech ?? { words: entry.text }),
+      proof:
+        entry.discarded ??
+        entry.revealedGuess ??
+        (entry.evidence === "proof" ? entry.role : undefined),
+      proofSlot: entry.proofSlot,
+      proofArt: entry.proofArt,
+      guessed: !!entry.revealedGuess,
+      move: entry.deckMove,
+      coinMove: entry.coinMove,
+      cardSwap: entry.cardSwap,
+    }));
 }
 
 type Frame = { end: number; room: RoomView; deal: boolean };

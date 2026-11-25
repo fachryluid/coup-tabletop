@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { deal, defaults, type Move, type Config } from "../domain/model";
-import { legal, play, closeWindow } from "../domain/engine";
+import { deal, defaults, roles, type Move, type Config } from "../domain/model";
+import { cardImage } from "../domain/card-themes";
+import { legal, play, switchCards, closeWindow } from "../domain/engine";
 const rng = () => 0.45;
 export function fixture(config: Partial<Config> = {}) {
   const g = deal(
@@ -277,9 +278,159 @@ describe("aturan klasik dan modul tongkrongan", () => {
     expect(t.g.players[1].coins).toBe(1);
     t.g.players[2].coins = 10;
     expect(legal(t.g, "C").every((m) => m.kind === "Coup")).toBe(true);
-    t.move("C", "Coup", { target: "A" });
-    t.move("A", "Lose", { role: "Duke" });
+    t.move("C", "Coup", { target: "A", slot: 0 });
+    expect(t.g.stage).toBe("turn");
+    expect(t.g.players[0].revealed).toEqual(["Duke"]);
+    expect(t.g.players[0].hand).toEqual(["Assassin"]);
     expect(t.g.players[2].coins).toBe(3);
+  });
+  it("Coup memilih kartu kiri atau kanan bagi target dengan 2 kartu dan langsung menggugurkannya", () => {
+    // Target B has ["Duke", "Contessa"]; Coup slot 1 (kanan) eliminates Contessa directly
+    const t = table();
+    t.g.players[0].coins = 7;
+    expect(legal(t.g, "A")).toEqual(
+      expect.arrayContaining([
+        { kind: "Coup", target: "B", slot: 0 },
+        { kind: "Coup", target: "B", slot: 1 },
+      ]),
+    );
+    expect(() => t.move("A", "Coup", { target: "B" })).toThrow();
+    t.move("A", "Coup", { target: "B", slot: 1 });
+    expect(t.g.stage).toBe("turn");
+    expect(t.g.turn).toBe("B");
+    expect(t.g.players[0].coins).toBe(0);
+    expect(t.g.players[1].hand).toEqual(["Duke"]);
+    expect(t.g.players[1].revealed).toEqual(["Contessa"]);
+    expect(t.g.log.some((e) => e.proofSlot === 1 && e.discarded === "Contessa")).toBe(
+      true,
+    );
+    expect(
+      t.g.log.some(
+        (e) =>
+          e.coinMove?.from === "A" &&
+          e.coinMove?.to === "bank" &&
+          e.coinMove?.amount === 7,
+      ),
+    ).toBe(true);
+
+    // Target with 1 card rejects slot 1 and accepts slot 0
+    const t2 = table();
+    t2.g.players[0].coins = 7;
+    t2.g.players[1].revealed.push(t2.g.players[1].hand.pop()!);
+    expect(() => t2.move("A", "Coup", { target: "B", slot: 1 })).toThrow();
+    t2.move("A", "Coup", { target: "B", slot: 0 });
+    expect(t2.g.players[1].hand).toEqual([]);
+    expect(t2.g.players[1].revealed).toEqual(["Contessa", "Duke"]);
+  });
+  it("mencatat perpindahan koin pada Income, Foreign Aid, Tax, Steal, Assassinate, dan Coup", () => {
+    const t = table();
+    t.move("A", "Income");
+    expect(t.g.log.at(-1)?.coinMove).toEqual({ from: "bank", to: "A", amount: 1 });
+    t.move("B", "Foreign Aid");
+    t.close();
+    expect(t.g.log.at(-1)?.coinMove).toEqual({ from: "bank", to: "B", amount: 2 });
+    t.move("C", "Tax");
+    t.close();
+    expect(t.g.log.at(-1)?.coinMove).toEqual({ from: "bank", to: "C", amount: 3 });
+    t.move("A", "Steal", { target: "C" });
+    t.close();
+    expect(t.g.log.at(-1)?.coinMove).toEqual({ from: "C", to: "A", amount: 2 });
+    t.move("B", "Assassinate", { target: "A" });
+    expect(t.g.log.at(-1)?.coinMove).toEqual({ from: "B", to: "bank", amount: 3 });
+  });
+  it("Switch menukar kartu kiri/kanan maksimal 1x per giliran tanpa memengaruhi aksi lain", () => {
+    let g = fixture({ one_time_guess: true });
+    // A holds ["Duke", "Assassin"]
+    expect(g.players[0].hand).toEqual(["Duke", "Assassin"]);
+    // Non-turn player cannot switch
+    expect(() => switchCards(g, "B")).toThrow();
+
+    // First switch on A's turn succeeds and keeps A's turn + legal moves intact
+    g = switchCards(g, "A");
+    expect(g.players[0].hand).toEqual(["Assassin", "Duke"]);
+    expect(g.turn).toBe("A");
+    expect(g.stage).toBe("turn");
+    expect(g.switched).toBe(true);
+    expect(g.log.at(-1)).toMatchObject({
+      text: "A menukar posisi kartunya.",
+      cardSwap: "A",
+    });
+    expect(g.log.at(-1)?.text).not.toMatch(/Duke|Assassin/);
+
+    // Second switch on the same turn is rejected
+    expect(() => switchCards(g, "A")).toThrow();
+
+    // A still takes normal turn action
+    g = play(g, "A", { kind: "Income" }, 10, rng);
+    expect(g.turn).toBe("B");
+    expect(g.switched).toBe(false);
+
+    // After A switched, slot 0 is now Assassin (was Duke) -> Guess Duke on slot 0 misses!
+    g = play(g, "B", { kind: "Guess", target: "A", slot: 0, role: "Duke" }, 20, rng);
+    expect(g.stage).toBe("loss");
+    expect(g.loss?.id).toBe("B");
+    g = play(g, "B", { kind: "Lose", role: "Contessa" }, 21, rng);
+
+    // C takes Income -> back to A's turn: A can switch again even when coins >= 10 (mandatory Coup)
+    g = play(g, "C", { kind: "Income" }, 30, rng);
+    g.players[0].coins = 10;
+    expect(legal(g, "A").every((m) => m.kind === "Coup")).toBe(true);
+    g = switchCards(g, "A");
+    expect(g.turn).toBe("A");
+    expect(legal(g, "A").every((m) => m.kind === "Coup")).toBe(true);
+    g = play(g, "A", { kind: "Coup", target: "C", slot: 0 }, 40, rng);
+
+    // B only has 1 card left -> cannot switch on B's turn
+    expect(g.turn).toBe("B");
+    expect(g.players[1].hand).toHaveLength(1);
+    expect(() => switchCards(g, "B")).toThrow();
+  });
+  it("setiap 3 copy peran memiliki varian art unik (0, 1, 2) dan Custom 1 memakai 1 desain kustom + 2 klasik", () => {
+    const g = deal(
+      ["A", "B", "C"].map((id) => ({ id, name: id })),
+      defaults,
+      rng,
+      "theme-test",
+      "custom1",
+    );
+    expect(g.cardTheme).toBe("custom1");
+    // Collect all 15 physical (role, art) pairs across deck + players
+    const all = [
+      ...g.deck.map((role, i) => ({ role, art: g.deckArt![i] })),
+      ...g.players.flatMap((p) =>
+        p.hand.map((role, i) => ({ role, art: p.handArt![i] })),
+      ),
+    ];
+    expect(all).toHaveLength(15);
+    for (const role of roles) {
+      const variants = all
+        .filter((c) => c.role === role)
+        .map((c) => c.art)
+        .sort();
+      expect(variants).toEqual([0, 1, 2]);
+      // Variant 0 uses Custom 1 art; variants 1 and 2 fall back to classic art
+      expect(cardImage(role, "custom1", 0)).toBe(
+        `/cards/custom1/${role.toLowerCase()}-1.webp`,
+      );
+      expect(cardImage(role, "custom1", 1)).toBe(
+        `/cards/${role.toLowerCase()}.webp`,
+      );
+      expect(cardImage(role, "custom1", 2)).toBe(
+        `/cards/${role.toLowerCase()}.webp`,
+      );
+      // Classic theme uses classic art for all 3 copies
+      for (const v of [0, 1, 2]) {
+        expect(cardImage(role, "classic", v)).toBe(
+          `/cards/${role.toLowerCase()}.webp`,
+        );
+      }
+    }
+    // Switching preserves art variants alongside swapped roles
+    const [r0, r1] = g.players[0].hand;
+    const [a0, a1] = g.players[0].handArt!;
+    const swapped = switchCards(g, "A");
+    expect(swapped.players[0].hand).toEqual([r1, r0]);
+    expect(swapped.players[0].handArt).toEqual([a1, a0]);
   });
 });
 
@@ -416,7 +567,7 @@ it("otomatis menggugurkan kartu terakhir tanpa menunggu pilihan saat kartu tingg
   const t1 = table();
   t1.g.players[0].coins = 7;
   t1.g.players[1].revealed.push(t1.g.players[1].hand.pop()!);
-  t1.move("A", "Coup", { target: "B" });
+  t1.move("A", "Coup", { target: "B", slot: 0 });
   expect(t1.g.stage).toBe("turn");
   expect(t1.g.players[1].hand).toEqual([]);
   expect(t1.g.players[1].revealed).toHaveLength(2);
