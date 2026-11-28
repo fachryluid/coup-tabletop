@@ -38,8 +38,10 @@ test("kontrol formulir meja dapat dipakai dengan keyboard", async ({
   await page.getByRole("button", { name: "Simpan", exact: true }).click();
   await expect(page.locator(".seat b").first()).toHaveText("Rani Baru");
   await page.getByRole("button", { name: "Tambah computer" }).click();
-  await page.getByLabel("Level Computer 1").selectOption("hard");
-  await expect(page.getByLabel("Level Computer 1")).toHaveValue("hard");
+  const botName = (await page.locator(".seat").nth(1).locator("b").innerText()).trim();
+  expect(botName).not.toMatch(/^Computer \d+$/);
+  await page.getByLabel("Level " + botName).selectOption("hard");
+  await expect(page.getByLabel("Level " + botName)).toHaveValue("hard");
   await page.screenshot({ path: info.outputPath("lobi.png") });
   await page.getByRole("button", { name: "Mulai pertandingan" }).click();
   await page.getByRole("button", { name: "Lihat meja" }).click();

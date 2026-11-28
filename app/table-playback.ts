@@ -142,20 +142,42 @@ function receive(state: Playback, room: RoomView, restore: boolean): Playback {
   };
 }
 
-function complete(state: Playback): Playback {
+function complete(state: Playback, delivered?: Line): Playback {
   if (state.cursor !== state.completed + 1) return state;
   const frame = state.frames[0];
-  return frame?.end === state.cursor
-    ? {
-        ...state,
-        completed: state.cursor,
-        room: frame.room,
-        exposed: undefined,
-        sceneKey: state.sceneKey + (frame.deal ? 1 : 0),
-        deal: frame.deal,
-        frames: state.frames.slice(1),
-      }
-    : { ...state, completed: state.cursor };
+  if (frame?.end === state.cursor) {
+    return {
+      ...state,
+      completed: state.cursor,
+      room: frame.room,
+      exposed: undefined,
+      sceneKey: state.sceneKey + (frame.deal ? 1 : 0),
+      deal: frame.deal,
+      frames: state.frames.slice(1),
+    };
+  }
+  const replacedOwnHand =
+    delivered?.move?.kind === "replace" &&
+    frame &&
+    state.room?.game &&
+    frame.room.game &&
+    state.room.me === delivered.move.seat;
+  return {
+    ...state,
+    completed: state.cursor,
+    ...(replacedOwnHand
+      ? {
+          room: {
+            ...state.room!,
+            game: {
+              ...state.room!.game!,
+              hand: [...frame.room.game!.hand],
+              handArt: [...frame.room.game!.handArt],
+            },
+          },
+        }
+      : {}),
+  };
 }
 export function playback(state: Playback, event: Event): Playback {
   switch (event.type) {
@@ -201,13 +223,16 @@ export function playback(state: Playback, event: Event): Playback {
           return state;
         if (event.line.move) return { ...state, moving: event.line };
       }
-      const next = complete({
-        ...state,
-        moving: undefined,
-        revealed: undefined,
-        exposed:
-          event.line.proof && !event.line.move ? event.line : state.exposed,
-      });
+      const next = complete(
+        {
+          ...state,
+          moving: undefined,
+          revealed: undefined,
+          exposed:
+            event.line.proof && !event.line.move ? event.line : state.exposed,
+        },
+        event.type === "delivered" ? event.line : undefined,
+      );
       return !next.manual && next.cursor < next.lines.length - 1
         ? { ...next, cursor: next.cursor + 1 }
         : next;

@@ -101,6 +101,7 @@ async function animateCards(
       );
       const cancel = () => animation.cancel();
       signal.addEventListener("abort", cancel, { once: true });
+      let keepOverlay = false;
       try {
         await animation.finished;
         if (signal.aborted) return;
@@ -110,11 +111,13 @@ async function animateCards(
           arrived?.();
         } else if (!returning && !replacement) {
           slot.style.visibility = "visible";
+        } else if (replacement && !returning) {
+          keepOverlay = true;
         }
       } catch (error) {
         if (!signal.aborted) throw error;
       } finally {
-        card.remove();
+        if (!keepOverlay) card.remove();
         signal.removeEventListener("abort", cancel);
       }
     }
@@ -181,9 +184,13 @@ export function CourtDeck({
     ).then(() => {
       if (!abort.signal.aborted) onDelivery(moving);
     });
-    const arena = pile.current.closest(".arena");
+    const deck = pile.current;
+    const arena = deck.closest(".arena");
     return () => {
       abort.abort();
+      deck
+        .querySelectorAll<HTMLElement>(".travelling-card")
+        .forEach((el) => el.remove());
       arena
         ?.querySelectorAll<HTMLElement>("[data-travelling]")
         .forEach((slot) => delete slot.dataset.travelling);

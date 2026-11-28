@@ -1,12 +1,13 @@
-# COUP Digital Tabletop — Product & Implementation Plan
+# The Ultimate Coup — Product & Implementation Plan
 
 > Status: **MVP v1.2 — siap dieksekusi secara bertahap**  
+> Nama brand resmi (keputusan terbaru, final): **The Ultimate Coup** (sebelumnya *Coup Digital Tabletop*)  
 > Bahasa: Indonesia  
 > Tujuan: sumber perencanaan utama yang menjadi instruksi eksekusi untuk AI coding agent.
 
 ## 1. Ringkasan Produk
 
-Bangun web game multiplayer **Coup Digital Tabletop** untuk dimainkan bersama teman dari perangkat masing-masing. Pengalaman yang diutamakan adalah **meja permainan digital**, bukan adaptasi Coup yang sepenuhnya mengotomasi keputusan sosial. Sistem membantu penanganan kartu, koin, giliran, sinkronisasi, dan pencatatan aksi, sementara pemain tetap mengambil keputusan dalam bluff, challenge, block, dan interaksi sosial.
+Bangun web game multiplayer **The Ultimate Coup** untuk dimainkan bersama teman dari perangkat masing-masing. Pengalaman yang diutamakan adalah **meja permainan digital**, bukan adaptasi Coup yang sepenuhnya mengotomasi keputusan sosial. Sistem membantu penanganan kartu, koin, giliran, sinkronisasi, dan pencatatan aksi, sementara pemain tetap mengambil keputusan dalam bluff, challenge, block, dan interaksi sosial.
 
 **Pembeda utama:** aturan tongkrongan (*house rules*) akan diimplementasikan **langsung di dalam kode/game engine** sebagai modul bawaan. Host dapat mengaktifkan/menonaktifkan **setiap aturan secara individual** sebelum permainan dimulai. **Bukan** rule builder yang dapat membuat aturan baru melalui UI.
 
@@ -15,7 +16,8 @@ Bangun web game multiplayer **Coup Digital Tabletop** untuk dimainkan bersama te
 - Platform utama: **web**, mendukung HP dan PC.
 - Multiplayer: **private room only**, tanpa public room, matchmaking, atau lobby publik.
 - **Jumlah peserta: 2–6 slot per pertandingan (Classic), keputusan final.** Slot boleh ditempati manusia maupun computer/bot. Room tidak dapat memulai permainan dengan kurang dari 2 atau lebih dari 6 peserta total.
-- Alur akses: buat room atau join via kode/link, cukup nickname, tanpa wajib registrasi.
+- Alur akses (**keputusan terbaru, final**): **semua pemain wajib login dengan Google** (tanpa login manual username/password). Setiap akun Google wajib memiliki **username** (`3–20` karakter huruf kecil, angka, atau underscore) dan menyetujui halaman **Syarat & Ketentuan (`/terms`)** serta **Kebijakan Privasi (`/privacy`)**. Saat bermain di meja privat, pemain tetap **bebas memakai nickname** yang berbeda dari nama maupun username akunnya.
+- Penyimpanan persisten (**keputusan terbaru, final**): gunakan **SQLite** (bawaan Node 22 `node:sqlite`, WAL mode, di `./data/coup.db`) di balik lapisan repository abstrak (`AppDatabase`: `AccountStore` + `StatsRepository`) dan skema ANSI-SQL bermigrasi (`accounts`, `matches`, `match_participants`, `player_stats`, `schema_migrations`) agar siap untuk fitur statistik pemain, riwayat match, leaderboard global, serta migrasi mudah ke PostgreSQL/MySQL di masa depan.
 - Setiap pemain manusia bermain dari perangkat masing-masing secara real-time. **Computer/bot tidak perlu perangkat atau sesi browser tersendiri.**
 - Reconnect dengan identitas sesi yang aman agar kartu dan posisi permainan tetap sama setelah putus koneksi.
 - Mode: **multiplayer digital tabletop**.
@@ -115,7 +117,7 @@ Syarat teknis:
 **Kontrak implementasi:**
 - Aktif hanya saat `one_time_guess = true`; default OFF. Kesempatan dipakai maksimal **sekali per pemain per match**, bukan sekali per giliran, dan tidak di-reset saat reconnect; di-reset saat rematch.
 - Semua 5 karakter klasik dapat dipilih sebagai tebakan bersama posisi kartu spesifik (`slot`: 0 = kiri, 1 = kanan); target harus pemain **lain yang masih hidup**. Pemeriksaan cocok berdasarkan **kartu influence hidup pada slot yang ditebak**, bukan kartu lain di tangan target atau kartu yang sudah terbuka/hilang.
-- Kebenaran tebakan ditentukan langsung oleh server tanpa fase konfirmasi dari target. Jika benar, kartu pada slot tersebut dibuka lalu gugur; jika salah, kartu pada slot tersebut dibuka untuk membuktikan tebakan salah, dikembalikan ke dek yang dikocok ulang dan diganti kartu baru, lalu penebak memilih **satu** kartu miliknya yang masih hidup untuk digugurkan (bot memilih sesuai policy).
+- Kebenaran tebakan ditentukan langsung oleh server tanpa fase konfirmasi dari target. Jika benar, kartu pada slot tersebut dibuka lalu gugur, dan penebak mendapat **bonus +1 poin** pada perolehan poin akhir pertandingan; jika salah, kartu pada slot tersebut dibuka untuk membuktikan tebakan salah, dikembalikan ke dek yang dikocok ulang dan diganti kartu baru, lalu penebak memilih **satu** kartu miliknya yang masih hidup untuk digugurkan (bot memilih sesuai policy).
 - Catat actor, target, slot kartu, guessed role, outcome, kartu yang dibuka, gerakan penggantian dek (bila salah), dan sisa kesempatan. Pastikan informasi kartu lain tidak bocor.
 - Tebakan adalah **aksi pada giliran penebak** yang menggantikan aksi Coup biasa; tidak memerlukan koin, tidak dapat di-Challenge atau di-Block. Konsumsi kesempatan terjadi saat command valid diterima secara atomik, termasuk jika tebakan salah.
 - Saat OFF, tidak muncul tombol Guess dan engine menolak command Guess; tidak ada kesempatan tebak di pertandingan tersebut.
@@ -425,3 +427,19 @@ Fase tidak selalu dilewati semuanya; urutan tergantung aksi yang dipilih. Semua 
 
 ### Voice chat meja (final)
 Pemain dapat bergabung lewat tombol mikrofon di deretan kontrol kanan atas dan mengizinkan mikrofon untuk berbicara dengan peserta voice di room yang sama. Mikrofon awalnya mati. Mute tetap memungkinkan mendengar pemain lain. Keluar atau terputus menghentikan mikrofon. Suara diteruskan langsung tanpa disimpan dalam riwayat.
+
+### Poin dinamis, profil avatar lobi, dan nama bot acak (final)
+- **Avatar lobi:** Pengguna yang masuk dengan akun Google menampilkan foto profil Google pada baris kursinya di lobi (termasuk host dan tamu), dengan fallback ikon pemain default bila tanpa foto dan ikon komputer untuk kursi bot.
+- **Poin dinamis berbasis jumlah pemain ($N \in [2..6]$):** Pemenang (peringkat 1) memperoleh `+N` poin; peringkat $r \in [2..N]$ memperoleh `+(N - r)` poin hingga `0` untuk peringkat terakhir (contoh 4 pemain: `#1 = +4`, `#2 = +2`, `#3 = +1`, `#4 = 0`). Bila aturan **One-Time Guess** aktif dan tebakan seorang pemain **benar**, pemain tersebut memperoleh **bonus `+1` poin** tambahan di atas poin peringkatnya (berlaku bagi pemenang maupun non-pemenang pada pertandingan yang selesai dengan pemenang; di-reset saat rematch). Klasemen sesi dan leaderboard global mengurutkan berdasarkan total poin lalu jumlah menang; pertandingan yang diakhiri host tanpa pemenang tidak memberikan poin, bonus, maupun kemenangan.
+- **Nama bot acak unik:** Saat menambahkan komputer, nama dipilih acak tanpa bentrok kursi aktif dari pool JSON terkurasi (`domain/bot-names.json`, 60 nama unik).
+
+## 19. Tahap A: Profil Pemain, Riwayat Match, Leaderboard & Saran Nama (Keputusan Final)
+
+Dokumen spesifikasi lengkap: [`docs/stage-a-profile-leaderboard.md`](docs/stage-a-profile-leaderboard.md).
+
+- **Terminologi Poin:** **Poin Sesi** untuk klasemen sementara dalam satu meja privat; **Poin Global** untuk akumulasi poin lintas pertandingan pada profil dan leaderboard (dengan cadangan **Poin Turnamen** untuk Tahap D).
+- **PvP Murni (final):** Statistik dan leaderboard **PvP** hanya menghitung pertandingan selesai dengan pemenang (`ended_reason = 'completed'`, minimal 2 aksi) di mana **seluruh kursi diisi manusia** (`human_count >= 2` dan `bot_count = 0`). Meja campuran (manusia + computer) maupun solo vs computer tetap tercatat pada riwayat match dan kategori **Semua Match**, tetapi tidak masuk kategori **PvP**.
+- **Leaderboard (`/leaderboard`):** Default tab **PvP (Semua Manusia) · Mingguan** (reset Senin 00:00 WIB), dengan opsi pindah ke **Semua Match** dan **Sepanjang Masa (All-Time)**, serta kartu **Peringkat Saya** untuk akun yang login.
+- **Profil & Riwayat Match (`/profile` & `/u/[username]`):** Menampilkan identitas publik, julukan gaya bermain otomatis, statistik PvP & Semua Match, riwayat match terpaginasi dengan filter dan detail klasemen peserta (tanpa `roomCode` atau kartu rahasia). Data sensitif (`email`, `googleSub`, dan daftar saran nama panggilan) bersifat privat hanya bagi pemilik akun.
+- **Riwayat & Saran Nama Panggilan (`account_nicknames`):** Server menyimpan nama panggilan yang pernah dan sering dipakai tiap akun saat `create`, `join`, dan `rename` (case-insensitive key, kapitalisasi terbaru, backfill dari histori lama). Digunakan untuk auto-prefill, chip saran nama tersering, dan filter ketik pada form Buat Meja, Gabung Meja, serta ubah nama di lobi; pemilik akun dapat menghapus saran di `/profile`.
+- **Akses:** Mengikuti status autentikasi Google (`authRequired`); bila aktif, halaman dan API Profil, Riwayat Match, Leaderboard, serta Nickname memerlukan sesi login valid.

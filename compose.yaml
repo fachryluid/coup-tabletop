@@ -5,12 +5,23 @@ services:
     build: .
     init: true
     restart: always
+    stop_grace_period: 15s
     expose: ["3000"]
     environment:
       VIRTUAL_HOST: ${COUP_DOMAIN:-coup.jejakode.com}
       VIRTUAL_PORT: "3000"
       LETSENCRYPT_HOST: ${COUP_DOMAIN:-coup.jejakode.com}
       LETSENCRYPT_EMAIL: ${ACME_EMAIL:-jejakodeindonesia@gmail.com}
+      COUP_ORIGIN: ${COUP_ORIGIN:-https://coup.jejakode.com}
+      COUP_DATA_DIR: /app/data
+      DATABASE_DRIVER: ${DATABASE_DRIVER:-sqlite}
+      DATABASE_PATH: ${DATABASE_PATH:-/app/data/coup.db}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:-}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-}
+    volumes:
+      - ./data:/app/data
     networks: [proxy]
     security_opt:
       - no-new-privileges:true

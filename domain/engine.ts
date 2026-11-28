@@ -161,6 +161,7 @@ function cloneGame(state: Game): Game {
     poolArt: alignArt(state.pool, state.poolArt),
     log: [...state.log],
     undo: state.undo ? { ...state.undo } : undefined,
+    eliminatedOrder: [...(state.eliminatedOrder ?? [])],
     bluffs: state.bluffs ? { ...state.bluffs } : {},
   };
 }
@@ -247,6 +248,10 @@ function reveal(
   p.revealed.push(role);
   revealedArt.push(art);
   p.revealedArt = revealedArt;
+  if (!p.hand.length) {
+    g.eliminatedOrder = g.eliminatedOrder ?? [];
+    if (!g.eliminatedOrder.includes(id)) g.eliminatedOrder.push(id);
+  }
   record(g, {
     ...(spoken
       ? {
@@ -622,6 +627,7 @@ export function play(
       const actualArt = victimArt[slot] ?? 0;
       const hit = oneTimeGuess.matches(victim, slot, m.role!);
       if (hit) {
+        p.guessHit = true;
         const words =
           "Tebakan " + p.name + " benar. Kartu ini memang " + actual + ".";
         record(g, {

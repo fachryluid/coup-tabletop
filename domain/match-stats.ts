@@ -1,3 +1,4 @@
+import type { GameEvent } from "./model";
 import type { BotObservation } from "./view";
 
 export type MatchAwardId =
@@ -24,55 +25,107 @@ export interface MatchStats {
   awards: MatchAward[];
 }
 
+export interface SeatMatchMetrics {
+  attacksMade: number;
+  timesTargeted: number;
+  challengesMade: number;
+  blocksMade: number;
+  bluffsMade: number;
+  peakCoins: number;
+}
+
+export interface DetailedMatchMetrics {
+  totalActions: number;
+  totalChallenges: number;
+  totalBlocks: number;
+  bySeat: Map<string, SeatMatchMetrics>;
+}
+
 const ATTACK_RE = / memilih (Coup|Assassinate|Steal|Guess) → /;
 
-export function computeMatchStats(game: BotObservation): MatchStats {
-  const nameOf = (id: string) =>
-    game.players.find((p) => p.id === id)?.name ?? id;
+export function computeDetailedMatchMetrics(
+  log: readonly GameEvent[],
+  bluffs: Readonly<Record<string, number>> = {},
+  seatIds: readonly string[] = [],
+): DetailedMatchMetrics {
+  const bySeat = new Map<string, SeatMatchMetrics>();
+  const ensure = (id: string): SeatMatchMetrics => {
+    let cur = bySeat.get(id);
+    if (!cur) {
+      cur = {
+        attacksMade: 0,
+        timesTargeted: 0,
+        challengesMade: 0,
+        blocksMade: 0,
+        bluffsMade: 0,
+        peakCoins: 0,
+      };
+      bySeat.set(id, cur);
+    }
+    return cur;
+  };
 
-  const targeted = new Map<string, number>();
-  const attacked = new Map<string, number>();
-  const challenged = new Map<string, number>();
-  const blocked = new Map<string, number>();
-  const peakCoins = new Map<string, number>();
+  for (const id of seatIds) ensure(id);
 
   const actionIds = new Set<string>();
   let totalChallenges = 0;
   let totalBlocks = 0;
 
-  const inc = (map: Map<string, number>, id?: string) => {
-    if (!id) return;
-    map.set(id, (map.get(id) ?? 0) + 1);
-  };
-
-  for (const event of game.log) {
+  for (const event of log) {
     if (event.actionId) actionIds.add(event.actionId);
 
     for (const b of event.balances) {
-      const prev = peakCoins.get(b.id) ?? 0;
-      if (b.coins > prev) peakCoins.set(b.id, b.coins);
+      const m = ensure(b.id);
+      if (b.coins > m.peakCoins) m.peakCoins = b.coins;
     }
 
     if (ATTACK_RE.test(event.text)) {
-      inc(attacked, event.actorId ?? event.actor);
-      inc(targeted, event.targetId);
+      const attacker = event.actorId ?? event.actor;
+      if (attacker) ensure(attacker).attacksMade++;
+      if (event.targetId) ensure(event.targetId).timesTargeted++;
     }
 
     if (event.speech?.by && event.text.includes(" menantang ")) {
       totalChallenges++;
-      inc(challenged, event.speech.by);
+      ensure(event.speech.by).challengesMade++;
     }
 
     if (event.blockedAction && event.actor) {
       totalBlocks++;
-      inc(blocked, event.actor);
+      ensure(event.actor).blocksMade++;
     }
   }
 
-  function topOf(map: Map<string, number>, minValue = 1) {
+  for (const [id, count] of Object.entries(bluffs)) {
+    if (count > 0) ensure(id).bluffsMade = count;
+  }
+
+  return {
+    totalActions: actionIds.size,
+    totalChallenges,
+    totalBlocks,
+    bySeat,
+  };
+}
+
+export function computeMatchStats(game: BotObservation): MatchStats {
+  const nameOf = (id: string) =>
+    game.players.find((p) => p.id === id)?.name ?? id;
+
+  const detailed = computeDetailedMatchMetrics(
+    game.log,
+    game.bluffs ?? {},
+    game.players.map((p) => p.id),
+  );
+
+  function topBy(
+    pick: (m: SeatMatchMetrics) => number,
+    minValue = 1,
+  ): { id: string; value: number } | undefined {
     let bestId: string | undefined;
     let bestVal = 0;
-    for (const [id, val] of map) {
+    for (const [id, metrics] of detailed.bySeat) {
+      const val = pick(metrics);
       if (val > bestVal) {
         bestVal = val;
         bestId = id;
@@ -85,7 +138,7 @@ export function computeMatchStats(game: BotObservation): MatchStats {
 
   const awards: MatchAward[] = [];
 
-  const targetKing = topOf(targeted);
+  const targetKing = topBy((m) => m.timesTargeted);
   if (targetKing) {
     awards.push({
       id: "most_targeted",
@@ -97,7 +150,7 @@ export function computeMatchStats(game: BotObservation): MatchStats {
     });
   }
 
-  const attackerKing = topOf(attacked);
+  const attackerKing = topBy((m) => m.attacksMade);
   if (attackerKing) {
     awards.push({
       id: "most_aggressive",
@@ -109,7 +162,7 @@ export function computeMatchStats(game: BotObservation): MatchStats {
     });
   }
 
-  const challengeKing = topOf(challenged);
+  const challengeKing = topBy((m) => m.challengesMade);
   if (challengeKing) {
     awards.push({
       id: "most_challenges",
@@ -121,7 +174,7 @@ export function computeMatchStats(game: BotObservation): MatchStats {
     });
   }
 
-  const blockKing = topOf(blocked);
+  const blockKing = topBy((m) => m.blocksMade);
   if (blockKing) {
     awards.push({
       id: "most_blocks",
@@ -133,10 +186,7 @@ export function computeMatchStats(game: BotObservation): MatchStats {
     });
   }
 
-  const bluffs = new Map<string, number>(
-    Object.entries(game.bluffs ?? {}).filter(([, count]) => count > 0),
-  );
-  const bluffKing = topOf(bluffs);
+  const bluffKing = topBy((m) => m.bluffsMade);
   if (bluffKing) {
     awards.push({
       id: "most_bluffs",
@@ -148,7 +198,7 @@ export function computeMatchStats(game: BotObservation): MatchStats {
     });
   }
 
-  const coinKing = topOf(peakCoins, 3);
+  const coinKing = topBy((m) => m.peakCoins, 3);
   if (coinKing) {
     awards.push({
       id: "richest_peak",
@@ -161,9 +211,9 @@ export function computeMatchStats(game: BotObservation): MatchStats {
   }
 
   return {
-    totalActions: actionIds.size,
-    totalChallenges,
-    totalBlocks,
+    totalActions: detailed.totalActions,
+    totalChallenges: detailed.totalChallenges,
+    totalBlocks: detailed.totalBlocks,
     awards,
   };
 }

@@ -3,6 +3,7 @@ import type { Line } from "./table-playback";
 import { CourtDeck } from "./court-deck";
 import { CoinStack, TreasuryPile, TREASURY_TOTAL } from "./coin-table";
 import { EmoteBadge } from "./emote-control";
+import { VoiceSpeakingBadge } from "./voice-chat";
 import type { EmotePayload } from "../domain/emotes";
 import type { Entry } from "../domain/model";
 import type { RoomView } from "../domain/view";
@@ -100,6 +101,7 @@ export function TableScene({
   swappingSeat,
   onSwitch,
   emotes,
+  voiceSpeaking,
   onDelivery,
   children,
 }: {
@@ -111,6 +113,7 @@ export function TableScene({
   swappingSeat?: string;
   onSwitch?: () => void;
   emotes: Record<string, EmotePayload>;
+  voiceSpeaking?: Record<string, boolean>;
   onDelivery: (line: Line) => void;
   dialogue: ReturnType<typeof tableDialogue>;
   children: React.ReactNode;
@@ -186,6 +189,7 @@ export function TableScene({
                 key={p.id}
                 data-card-seat={p.id}
                 data-speaking={dialogue.speakerId === p.id}
+                data-voice-speaking={!!voiceSpeaking?.[p.id] || undefined}
                 data-turn={g.turn === p.id && g.stage !== "over"}
                 className={"opponent" + (!p.influence ? " eliminated" : "")}
               >
@@ -228,10 +232,13 @@ export function TableScene({
                     </span>
                   ))}
                 </div>
-                <b>
-                  {p.name}
-                  {status(p.id)}
-                </b>
+                <span className="table-name-row">
+                  {voiceSpeaking?.[p.id] && <VoiceSpeakingBadge />}
+                  <b>
+                    {p.name}
+                    {status(p.id)}
+                  </b>
+                </span>
                 <small>
                   {p.difficulty ? "Computer · " + p.difficulty : "Pemain"}
                   {g.turn === p.id && g.stage !== "over" ? " · Giliran" : ""}
@@ -288,11 +295,15 @@ export function TableScene({
           data-card-seat={room.me}
           className="player-area"
           data-speaking={dialogue.speakerId === room.me}
+          data-voice-speaking={!!voiceSpeaking?.[me.id] || undefined}
         >
           <EmoteBadge active={emotes[me.id]} />
           <div className="hand-info">
             <h2>Kartu Anda</h2>
-            <b>{me.name}</b>
+            <span className="table-name-row player-name-row">
+              {voiceSpeaking?.[me.id] && <VoiceSpeakingBadge />}
+              <b>{me.name}</b>
+            </span>
             <div className="seat-coins-row player-coins-row">
               <CoinStack seatId={me.id} count={myCoins} />
               <span className="balance">{myCoins} koin</span>

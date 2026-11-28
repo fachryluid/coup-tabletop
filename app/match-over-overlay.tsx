@@ -174,6 +174,12 @@ export function MatchOverOverlay({
     return () => document.removeEventListener("keydown", onKey);
   }, [onHide]);
 
+  const placementById = useMemo(
+    () => new Map((g.matchResults ?? []).map((item) => [item.id, item])),
+    [g.matchResults],
+  );
+  const winnerPlacement = winner ? placementById.get(winner.id) : undefined;
+
   const title = winner
     ? iWon
       ? "Anda Menang!"
@@ -181,7 +187,15 @@ export function MatchOverOverlay({
     : "Pertandingan Diakhiri";
 
   const subtitle = winner
-    ? `Sisa ${winner.influence} influence · ◉ ${winner.coins} koin`
+    ? `Sisa ${winner.influence} influence · ◉ ${winner.coins} koin${
+        winnerPlacement
+          ? ` · +${winnerPlacement.points} poin${
+              winnerPlacement.guessBonus
+                ? ` (termasuk +${winnerPlacement.guessBonus} bonus tebakan)`
+                : ""
+            }`
+          : ""
+      }`
     : "Pertandingan diakhiri oleh host tanpa pemenang.";
 
   return (
@@ -267,35 +281,71 @@ export function MatchOverOverlay({
                 <tr>
                   <th>#</th>
                   <th>Pemain</th>
+                  {winner && <th>Partai</th>}
                   <th>Menang</th>
+                  <th>Poin</th>
                 </tr>
               </thead>
               <tbody>
-                {room.leaderboard?.map((row, idx) => (
-                  <tr
-                    key={row.id}
-                    data-rank={idx + 1}
-                    data-winner={row.id === winner?.id || undefined}
-                    data-me={row.id === room.me || undefined}
-                    style={{ animationDelay: `${idx * 70}ms` }}
-                  >
-                    <td className="rank-cell">
-                      <span className="rank-medal" data-rank={idx + 1}>
-                        {idx + 1}
-                      </span>
-                    </td>
-                    <td>
-                      <b>{row.name}</b>
-                      {row.id === room.me && (
-                        <span className="you-tag">Anda</span>
+                {room.leaderboard?.map((row, idx) => {
+                  const matchResult = placementById.get(row.id);
+                  const earned = matchResult?.points ?? row.lastPoints;
+                  return (
+                    <tr
+                      key={row.id}
+                      data-rank={idx + 1}
+                      data-winner={row.id === winner?.id || undefined}
+                      data-me={row.id === room.me || undefined}
+                      style={{ animationDelay: `${idx * 70}ms` }}
+                    >
+                      <td className="rank-cell">
+                        <span className="rank-medal" data-rank={idx + 1}>
+                          {idx + 1}
+                        </span>
+                      </td>
+                      <td>
+                        <b>{row.name}</b>
+                        {row.id === room.me && (
+                          <span className="you-tag">Anda</span>
+                        )}
+                        {row.id === winner?.id && (
+                          <span className="win-tag">Juara</span>
+                        )}
+                      </td>
+                      {winner && (
+                        <td className="delta-cell">
+                          {earned !== undefined ? (
+                            <span className="delta-stack">
+                              <span
+                                className="points-delta"
+                                data-positive={earned > 0 || undefined}
+                                title={
+                                  matchResult?.guessBonus
+                                    ? `Termasuk +${matchResult.guessBonus} bonus tebakan benar`
+                                    : undefined
+                                }
+                              >
+                                +{earned}
+                              </span>
+                              {matchResult?.guessBonus ? (
+                                <span
+                                  className="guess-bonus-tag"
+                                  title="Bonus tebakan benar One-Time Guess"
+                                >
+                                  +{matchResult.guessBonus} tebak
+                                </span>
+                              ) : null}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                       )}
-                      {row.id === winner?.id && (
-                        <span className="win-tag">Juara</span>
-                      )}
-                    </td>
-                    <td className="wins-cell">{row.wins}</td>
-                  </tr>
-                ))}
+                      <td className="meta-cell">{row.wins}</td>
+                      <td className="wins-cell">{row.points}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </section>

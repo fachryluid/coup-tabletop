@@ -289,3 +289,85 @@ it("broadcasts valid in-game emotes only to the same room with rate limiting", a
     await io.close();
   }
 });
+
+it("broadcasts voice:speaking to all room members on loud audio and clears on mute/leave", async () => {
+  const http = createServer();
+  const { io, tables } = attach(http);
+  await new Promise<void>((done) => http.listen(0, "127.0.0.1", done));
+  const url = "http://127.0.0.1:" + (http.address() as AddressInfo).port;
+  const sockets: Socket[] = [];
+  function client() {
+    const socket = connect(url, {
+      transports: ["websocket"],
+      forceNew: true,
+      reconnection: false,
+    });
+    sockets.push(socket);
+    let view: RoomView;
+    const events: { seatId: string; speaking: boolean }[] = [];
+    socket.on("state", (s: RoomView) => {
+      view = s;
+    });
+    socket.on("voice:speaking", (e: { seatId: string; speaking: boolean }) => {
+      events.push(e);
+    });
+    return {
+      socket,
+      events,
+      state: () => view,
+      send: (event: string, data = {}) =>
+        socket.timeout(3000).emitWithAck(event, data),
+    };
+  }
+  try {
+    const host = client(),
+      peer = client(),
+      other = client();
+    const room = await host.send("enter", { type: "create", name: "Host" });
+    await peer.send("enter", {
+      type: "join",
+      code: room.code,
+      name: "Peer",
+    });
+    await other.send("enter", { type: "create", name: "Other" });
+    await viWait(() => host.state()?.seats.length === 2);
+
+    // Only host joins voice; peer stays out of voice but still receives speaking indicators
+    expect((await host.send("voice:join")).ok).toBe(true);
+
+    // Silent PCM packet should not trigger speaking
+    const silent = Buffer.alloc(1280, 0);
+    host.socket.emit("voice:audio", silent);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(peer.events).toEqual([]);
+
+    // Loud PCM packet triggers speaking: true for both host and peer, NOT other room
+    const loud = Buffer.alloc(1280);
+    for (let i = 0; i < 1280; i += 2) {
+      loud.writeInt16LE(i % 4 === 0 ? 8000 : -8000, i);
+    }
+    host.socket.emit("voice:audio", loud);
+    await viWait(
+      () =>
+        peer.events.some((e) => e.speaking) &&
+        host.events.some((e) => e.speaking),
+    );
+    expect(peer.events[0]).toEqual({
+      seatId: host.state().me,
+      speaking: true,
+    });
+    expect(other.events).toEqual([]);
+
+    // Muting immediately clears speaking: false
+    host.socket.emit("voice:mute");
+    await viWait(
+      () =>
+        peer.events.at(-1)?.speaking === false &&
+        host.events.at(-1)?.speaking === false,
+    );
+  } finally {
+    for (const socket of sockets) socket.disconnect();
+    tables.dispose();
+    await io.close();
+  }
+});

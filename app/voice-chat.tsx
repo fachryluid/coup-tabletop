@@ -1,17 +1,43 @@
 import { useEffect, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
 
+export function VoiceSpeakingBadge({
+  showLabel = false,
+}: {
+  showLabel?: boolean;
+}) {
+  return (
+    <span
+      className="voice-indicator"
+      role="status"
+      aria-label="Sedang berbicara"
+      title="Sedang berbicara"
+    >
+      <span className="voice-bars" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      {showLabel && <span className="voice-indicator-text">Berbicara</span>}
+    </span>
+  );
+}
+
 export function VoiceChat({ socket }: { socket: Socket }) {
   const [state, setState] = useState<"off" | "joining" | "live" | "muted">(
     "off",
   );
+  const [menuOpen, setMenuOpen] = useState(false);
   const [error, setError] = useState("");
+  const wrapRef = useRef<HTMLDivElement>(null);
   const session = useRef<AbortController | null>(null);
   const mic = useRef<MediaStreamTrack | null>(null);
+
   useEffect(() => {
     const stop = () => {
       session.current?.abort();
       session.current = null;
+      setMenuOpen(false);
       setState("off");
     };
     socket.on("disconnect", stop);
@@ -20,6 +46,25 @@ export function VoiceChat({ socket }: { socket: Socket }) {
       stop();
     };
   }, [socket]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
   async function join() {
     if (session.current) return;
     setError("");
@@ -131,31 +176,53 @@ export function VoiceChat({ socket }: { socket: Socket }) {
       );
     }
   }
+
   function leave() {
     session.current?.abort();
     session.current = null;
+    setMenuOpen(false);
     setState("off");
   }
-  function mute() {
+
+  function toggleMute() {
     if (mic.current) {
       mic.current.enabled = !mic.current.enabled;
+      if (!mic.current.enabled && socket.connected) socket.emit("voice:mute");
       setState(mic.current.enabled ? "live" : "muted");
     }
+    setMenuOpen(false);
   }
+
+  const connected = state === "live" || state === "muted";
   const label = {
     off: "Gabung voice chat",
     joining: "Batalkan sambungan voice chat",
-    live: "Bisukan mikrofon",
-    muted: "Aktifkan mikrofon",
+    live: "Kontrol voice chat (aktif)",
+    muted: "Kontrol voice chat (dibisukan)",
   }[state];
+
+  function handleTriggerClick() {
+    if (state === "off") {
+      void join();
+    } else if (state === "joining") {
+      leave();
+    } else {
+      setMenuOpen((v) => !v);
+    }
+  }
+
   return (
-    <div className="voice-control">
+    <div className="voice-control" ref={wrapRef}>
       <button
         type="button"
+        className="voice-trigger-btn"
+        data-voice-state={state}
         aria-label={label}
         title={label}
         aria-pressed={state === "live"}
-        onClick={state === "off" ? join : state === "joining" ? leave : mute}
+        aria-expanded={connected ? menuOpen : undefined}
+        aria-haspopup={connected ? "menu" : undefined}
+        onClick={handleTriggerClick}
       >
         <svg
           aria-hidden="true"
@@ -178,27 +245,69 @@ export function VoiceChat({ socket }: { socket: Socket }) {
           )}
         </svg>
       </button>
-      {(state === "muted" || state === "live") && (
-        <button
-          type="button"
-          aria-label="Keluar voice chat"
-          title="Keluar voice chat"
-          onClick={leave}
+      {connected && menuOpen && (
+        <div
+          className="voice-popover"
+          role="menu"
+          aria-label="Menu voice chat"
         >
-          <svg
-            aria-hidden="true"
-            width="19"
-            height="19"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+          <div className="voice-popover-head">
+            <b>Voice Chat</b>
+            <span
+              className="voice-status-pill"
+              data-live={state === "live" || undefined}
+            >
+              {state === "live" ? "Aktif" : "Dibisukan"}
+            </span>
+          </div>
+          <button
+            type="button"
+            role="menuitem"
+            className="voice-menu-item"
+            onClick={toggleMute}
           >
-            <path d="M9 4H4v16h5m-1-8h12m-5-5 5 5-5 5" />
-          </svg>
-        </button>
+            <svg
+              aria-hidden="true"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="9" y="2" width="6" height="13" rx="3" />
+              <path d="M5 10v2a7 7 0 0 0 14 0v-2m-7 9v3m-4 0h8" />
+              {state === "live" && <path d="m3 3 18 18" />}
+            </svg>
+            <span>
+              {state === "live" ? "Bisukan mikrofon" : "Aktifkan mikrofon"}
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="voice-menu-item voice-menu-leave"
+            onClick={leave}
+          >
+            <svg
+              aria-hidden="true"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <path d="m16 17 5-5-5-5M21 12H9" />
+            </svg>
+            <span>Keluar dari voice chat</span>
+          </button>
+        </div>
       )}
       {error && <small role="alert">{error}</small>}
     </div>

@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import "./style.css";
 import "./tabletop.css";
-const title = "Coup Digital Tabletop | Main Coup Online Bersama Teman";
+const title = "The Ultimate Coup | Main Coup Online Bersama Teman";
 const description =
-  "Gertak lawan, tantang klaimnya, dan pertahankan kartu terakhirmu. Main Coup di browser untuk 2–6 pemain. Undang teman ke meja privat atau lawan bot.";
+  "Gertak lawan, tantang klaimnya, dan pertahankan kartu terakhirmu di The Ultimate Coup. Main di browser untuk 2–6 pemain — undang teman ke meja privat atau lawan bot.";
 const preview = {
-  url: "/coup-tabletop.jpg",
+  url: "/the-ultimate-coup.jpg",
   width: 1200,
   height: 630,
-  alt: "Coup Digital Tabletop dengan kartu Assassin, Contessa, dan Duke",
+  alt: "The Ultimate Coup dengan logo mahkota emas serta kartu Assassin, Contessa, dan Duke",
 };
 
 export const metadata: Metadata = {
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "id_ID",
-    siteName: "Coup Digital Tabletop",
+    siteName: "The Ultimate Coup",
     url: "/",
     title,
     description,

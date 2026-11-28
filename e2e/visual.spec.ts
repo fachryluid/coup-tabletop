@@ -188,7 +188,7 @@ test("enam kursi terbaca di meja", async ({ page }, info) => {
   await page.getByRole("button", { name: "Buat room" }).click();
   for (let n = 1; n <= 5; n++) {
     await page.getByRole("button", { name: "Tambah computer" }).click();
-    await expect(page.getByLabel("Level Computer " + n)).toBeVisible();
+    await expect(page.locator(".seat-actions select")).toHaveCount(n);
   }
   await page.getByRole("button", { name: "Mulai pertandingan" }).click();
   await expect(page.locator(".opponent")).toHaveCount(5);
@@ -228,6 +228,7 @@ test("mengaktifkan animasi tidak mengulang pembagian awal", async ({
   await page.getByLabel("Nama pemain").fill("Rani");
   await page.getByRole("button", { name: "Buat room" }).click();
   await page.getByRole("button", { name: "Tambah computer" }).click();
+  const botName = (await page.locator(".seat").nth(1).locator("b").innerText()).trim();
   await page.getByRole("button", { name: "Mulai pertandingan" }).click();
   const pile = page.locator(".deck-pile");
   await expect(pile).toBeVisible();
@@ -248,7 +249,7 @@ test("mengaktifkan animasi tidak mengulang pembagian awal", async ({
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.getByRole("button", { name: /^Income/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Giliran Computer 1" }),
+    page.getByRole("heading", { name: "Giliran " + botName }),
   ).toBeVisible();
   expect(await pile.getAttribute("data-transfer-seen")).toBeNull();
 });

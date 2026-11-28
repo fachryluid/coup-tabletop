@@ -21,7 +21,7 @@ export function MatchHistory({ game }: { game: BotObservation }) {
       .join(" | ") ?? "Saldo historis belum tercatat.";
   async function copy() {
     const text = [
-      "Riwayat pertandingan Coup",
+      "Riwayat pertandingan The Ultimate Coup",
       "Timer: " +
         (game.config.timer ? "30 detik" : "OFF") +
         " | One-Time Guess: " +

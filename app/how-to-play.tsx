@@ -47,11 +47,14 @@ export function HowToPlay({ onStart }: { onStart: () => void }) {
     >
       <div className="htp-hero">
         <span className="htp-kicker">Panduan Singkat</span>
-        <h2 id="how-to-play-heading">Apa itu Coup &amp; Cara Bermain</h2>
+        <h2 id="how-to-play-heading">
+          Apa itu The Ultimate Coup &amp; Cara Bermain
+        </h2>
         <p className="htp-lead">
-          <strong>Coup</strong> adalah permainan kartu deduksi, strategi, dan
-          gertakan (<em>bluffing</em>) untuk <strong>2–6 pemain</strong>. Setiap
-          pemain memegang <strong>2 kartu pengaruh</strong> tertutup dan{" "}
+          <strong>The Ultimate Coup</strong> adalah permainan kartu deduksi,
+          strategi, dan gertakan (<em>bluffing</em>) untuk{" "}
+          <strong>2–6 pemain</strong>. Setiap pemain memegang{" "}
+          <strong>2 kartu pengaruh</strong> tertutup dan{" "}
           <strong>2 koin</strong>. Kamu bebas mengklaim karakter apa pun—baik
           sungguhan maupun menggertak—untuk menyingkirkan lawan hingga tinggal{" "}
           <strong>satu pemain terakhir yang bertahan</strong>.
@@ -187,8 +190,9 @@ export function HowToPlay({ onStart }: { onStart: () => void }) {
             <p>
               Sekali per pertandingan, kamu dapat menebak peran kartu kiri atau
               kanan milik lawan secara gratis. Jika benar, kartu tersebut
-              langsung gugur; jika salah, kartu lawan diganti dari dek dan kamu
-              kehilangan 1 kartu.
+              langsung gugur dan kamu mendapat <strong>bonus +1 poin</strong>;
+              jika salah, kartu lawan diganti dari dek dan kamu kehilangan 1
+              kartu.
             </p>
           </article>
           <article className="htp-extra-card">

@@ -5,13 +5,13 @@ export const oneTimeGuess = {
   shortDescription:
     "Tebak peran kartu kiri atau kanan lawan, sekali per pertandingan.",
   description:
-    "Sekali per pertandingan, tebak peran kartu spesifik (kiri/kanan) lawan. Jika benar kartu itu gugur; jika salah kartu lawan diganti dari dek dan Anda kehilangan satu influence.",
+    "Sekali per pertandingan, tebak peran kartu spesifik (kiri/kanan) lawan. Jika benar kartu itu gugur dan Anda mendapat bonus +1 poin; jika salah kartu lawan diganti dari dek dan Anda kehilangan satu influence.",
   details: [
     "Setiap pemain memiliki tepat 1 kesempatan menebak sepanjang satu pertandingan (di-reset saat rematch).",
     "Dilakukan pada giliran sendiri sebagai aksi utama, gratis (0 koin), dan tidak dapat di-Challenge atau di-Block.",
     "Penebak memilih lawan hidup, posisi kartu spesifik (kiri atau kanan), dan 1 dari 5 peran.",
     "Tidak ada aksi konfirmasi dari target; kartu yang ditebak langsung dibuka untuk membuktikan tebakan.",
-    "Jika tebakan benar, kartu target pada posisi tersebut langsung gugur.",
+    "Jika tebakan benar, kartu target pada posisi tersebut langsung gugur dan penebak memperoleh bonus +1 poin di akhir pertandingan.",
     "Jika tebakan salah, kartu target yang dibuka diganti dari kocokan dek, lalu penebak memilih 1 kartu hidup miliknya untuk gugur.",
   ],
   defaultEnabled: false,

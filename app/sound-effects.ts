@@ -59,7 +59,8 @@ export function setSfxEnabled(enabled: boolean): void {
 
 function getSfxVolume(): number {
   if (typeof window === "undefined" || !isSfxEnabled()) return 0;
-  const saved = Number(localStorage.getItem(VOLUME_STORAGE_KEY));
+  const raw = localStorage.getItem(VOLUME_STORAGE_KEY);
+  const saved = raw !== null && raw.trim() !== "" ? Number(raw) : NaN;
   const base =
     Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : 0.45;
   if (base <= 0.005) return 0;
@@ -136,18 +137,25 @@ function playSample(
   const rate = Math.max(0.65, Math.min(1.5, (opts.rate ?? 1) + jitter));
 
   const playDecoded = (buf: AudioBuffer) => {
-    try {
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      src.playbackRate.value = rate;
-      const gain = ctx.createGain();
-      gain.gain.value = Math.min(1.4, vol * gainScale);
-      src.connect(gain);
-      gain.connect(ctx.destination);
-      src.start(0);
-    } catch {
-      // Ignore playback errors silently
+    const startNow = () => {
+      try {
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.playbackRate.value = rate;
+        const gain = ctx.createGain();
+        gain.gain.value = Math.min(1.4, vol * gainScale);
+        src.connect(gain);
+        gain.connect(ctx.destination);
+        src.start(0);
+      } catch {
+        // Ignore playback errors silently
+      }
+    };
+    if (ctx.state === "suspended") {
+      void ctx.resume().then(startNow).catch(() => {});
+      return;
     }
+    startNow();
   };
 
   const cached = bufferCache.get(key);

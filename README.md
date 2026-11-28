@@ -1,6 +1,6 @@
-# Coup Digital Tabletop
+# The Ultimate Coup
 
-Permainan Coup untuk 2–6 kursi dalam room privat. Setiap peserta manusia memakai browser sendiri. Host bisa mengisi kursi dengan computer Easy, Normal, atau Hard.
+Permainan **The Ultimate Coup** untuk 2–6 kursi dalam room privat. Setiap peserta manusia memakai browser sendiri. Host bisa mengisi kursi dengan computer Easy, Normal, atau Hard.
 
 ## Bermain lokal
 
@@ -23,9 +23,11 @@ Saat Steal diumumkan, target langsung memilih Pass, Challenge, Block dengan Amba
 
 ## Server dan penyimpanan
 
-Next.js dan Socket.IO berjalan pada satu proses Node. Jalankan `npm run build` lalu `npm start` untuk memakai build produksi. Konfigurasi Docker produksi dan prosedur rollout ada di bagian berikut. Gunakan satu replika untuk penyimpanan in-memory ini. Jika memakai reverse proxy, teruskan HTTP dan upgrade WebSocket ke proses yang sama serta gunakan HTTPS untuk koneksi melalui internet.
+Next.js dan Socket.IO berjalan pada satu proses Node. Jalankan `npm run build` lalu `npm start` untuk memakai build produksi. Konfigurasi Docker produksi dan prosedur rollout ada di bagian berikut.
 
-Refresh dan putus koneksi mempertahankan kursi pada browser dan origin yang sama selama proses server masih hidup. Token privat disimpan per room di local storage. Restart server menghapus seluruh room dan sesi. Host offline tetap memegang kursinya. Pemain tamu bisa meninggalkan kursi sebelum pertandingan dimulai.
+- **Database persisten (`server/db/`)**: memakai **SQLite bawaan Node 22 (`node:sqlite`, WAL mode)** di `data/coup.db` (di-mount ke `./data:/app/data` di Docker). Skema bermigrasi otomatis (`schema_migrations`) mencakup tabel `accounts`, `matches`, `match_participants`, dan `player_stats` untuk fondasi akun, statistik permanen, dan leaderboard global. Jika ada file legacy `data/accounts.json`, datanya diimpor otomatis saat startup pertama.
+- **Siap migrasi ke PostgreSQL / MySQL**: seluruh akses data dibungkus di balik interface `AppDatabase` (`AccountStore` + `StatsRepository`) dengan DDL standar ANSI-SQL dan ID UUID. Ekspor snapshot JSON portabel kapan saja lewat `npm run db:export -- --out backup.json`.
+- **Room aktif (in-memory)**: state meja yang sedang berjalan tetap berada di RAM proses Node (1 replika) untuk latensi real-time rendah. Refresh dan putus koneksi mempertahankan kursi selama proses server hidup; hasil pertandingan yang selesai langsung dicatat ke SQLite.
 
 ## Docker produksi
 

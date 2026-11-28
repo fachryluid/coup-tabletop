@@ -22,6 +22,7 @@ export type Player = Seat & {
   revealed: Role[];
   revealedArt?: number[];
   used: boolean;
+  guessHit?: boolean;
 };
 export type Action =
   | "Income"
@@ -118,6 +119,8 @@ export interface Game {
   pool: Role[];
   poolArt?: number[];
   winner?: string;
+  /** Ordered seat IDs from first eliminated to last eliminated. */
+  eliminatedOrder?: string[];
   log: GameEvent[];
   paused: number | null;
   undo?: { id: string; coins: number };
@@ -190,6 +193,7 @@ export function deal(
         revealed: [],
         revealedArt: [],
         used: false,
+        guessHit: false,
       };
     }),
     deck: cards.map((c) => c.role),
@@ -204,6 +208,7 @@ export function deal(
     poolArt: [],
     paused: null,
     switched: false,
+    eliminatedOrder: [],
     bluffs: {},
     log: [],
   };

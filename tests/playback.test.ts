@@ -163,3 +163,67 @@ it("keeps Pass recorded in game.log without creating a table dialogue bubble", (
   expect(s.lines.some((l) => l.words.includes("Saya pass"))).toBe(false);
   expect(s.latest?.game?.log.some((e) => e.text === "C pass.")).toBe(true);
 });
+
+it("immediately updates the prover's replaced hand on delivery even when challenger auto-eliminates in the same frame", () => {
+  const snapA = (game: Game, revision: number): RoomView => ({
+    game: observe(game, "A"),
+    revision,
+    code: "ROOM",
+    me: "A",
+    host: "A",
+    seats,
+    config: game.config,
+    cardTheme: game.cardTheme ?? "classic",
+    serverTime: 100,
+  });
+
+  const start = deal(seats, defaults, rng);
+  start.players[0].hand = ["Duke", "Captain"];
+  start.players[0].handArt = [0, 1];
+  // B only has 1 live card left, so failed Challenge will emit Prove + B eliminated + A wins in ONE frame
+  const dropped = start.players[1].hand.pop()!;
+  start.players[1].handArt?.pop();
+  start.players[1].revealed.push(dropped);
+  start.players[1].revealedArt?.push(0);
+  // Make sure deck has a different role on top after shuffle by filling deck with Contessa
+  start.deck = start.deck.map(() => "Contessa");
+  start.deckArt = start.deck.map((_, i) => i % 3);
+
+  const tax = play(start, "A", { kind: "Tax" }, 10, rng);
+  const challenged = play(tax, "B", { kind: "Challenge" }, 20, rng);
+  const proved = play(challenged, "A", { kind: "Prove", role: "Duke" }, 30, rng);
+  // Ensure rng picked Contessa (not Duke) so replacement actually changed slot 0
+  expect(proved.players[0].hand[0]).toBe("Contessa");
+
+  let s = receive(initialPlayback, snapA(challenged, 3), true);
+  s = receive(s, snapA(proved, 4));
+  // Frame contains Prove + B eliminated + A wins -> cursor < frame.end
+  expect(s.frames).toHaveLength(1);
+  expect(s.frames[0].end).toBeGreaterThan(s.cursor);
+
+  const proveLine = s.lines[s.cursor];
+  expect(proveLine.move?.kind).toBe("replace");
+  expect(s.room?.game?.hand).toEqual(["Duke", "Captain"]);
+
+  // Reveal proof -> read -> start deck replacement flight
+  s = playback(s, { type: "reveal", line: proveLine });
+  s = playback(s, { type: "read", line: proveLine });
+  expect(s.moving).toBe(proveLine);
+
+  // Delivery finishes while B's elimination & winner lines are still queued:
+  // A's hand MUST already be Contessa (never revert to Duke!), while winner stays hidden until final line.
+  s = playback(s, { type: "delivered", line: proveLine });
+  expect(s.moving).toBeUndefined();
+  expect(s.frames).toHaveLength(1);
+  expect(s.room?.game?.hand).toEqual(["Contessa", "Captain"]);
+  expect(s.room?.game?.winner).toBeUndefined();
+
+  // Finish reading B's elimination + winner
+  const elimLine = s.lines[s.cursor];
+  s = playback(s, { type: "reveal", line: elimLine });
+  s = playback(s, { type: "read", line: elimLine });
+  s = playback(s, { type: "read", line: s.lines[s.cursor] });
+  expect(s.frames).toHaveLength(0);
+  expect(s.room?.game?.winner).toBe("A");
+  expect(s.room?.game?.hand).toEqual(["Contessa", "Captain"]);
+});

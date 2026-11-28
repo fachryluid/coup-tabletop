@@ -12,12 +12,18 @@ for (const fallback of [false, true]) {
           };
         });
       await page.goto("/");
+      await expect(
+        page.getByRole("button", { name: "Buat meja privat" }),
+      ).toBeEnabled();
       const enterStart = page.getByRole("button", {
         name: "Layar penuh",
         exact: true,
       });
       await expect(enterStart).toBeVisible();
       await enterStart.click();
+      await expect(
+        page.getByRole("button", { name: "Keluar layar penuh" }),
+      ).toBeVisible();
       const stage = await page.locator(".start-stage").boundingBox();
       expect(stage!.width).toBeCloseTo(page.viewportSize()!.width, 0);
       expect(stage!.height).toBeGreaterThanOrEqual(
@@ -40,6 +46,14 @@ for (const fallback of [false, true]) {
       await expect(dock).toHaveCSS("position", "static");
       await expect(
         page.locator("header").getByRole("button", { name: "Musik latar" }),
+      ).toHaveCount(0);
+      await expect(
+        page
+          .locator("header")
+          .getByRole("button", { name: "Kembali ke halaman awal" }),
+      ).toHaveCount(0);
+      await expect(
+        page.locator("header").getByRole("button", { name: "Menu meja" }),
       ).toBeVisible();
       await page
         .getByRole("button", { name: "Layar penuh", exact: true })
@@ -48,7 +62,7 @@ for (const fallback of [false, true]) {
       await expect(exit).toHaveAttribute("aria-pressed", "true");
       expect(
         await page.evaluate(() => document.fullscreenElement?.tagName ?? null),
-      ).toBe(fallback ? null : "MAIN");
+      ).toBe(fallback ? null : "HTML");
       await expect(dock).toHaveCSS("position", "fixed");
       const arena = await page.locator(".arena").boundingBox(),
         bar = await dock.boundingBox();
@@ -56,14 +70,15 @@ for (const fallback of [false, true]) {
       expect(bar!.x + bar!.width).toBeLessThanOrEqual(arena!.x + arena!.width);
       await page.getByRole("button", { name: "Menu meja" }).click();
       const menu = page.getByRole("dialog", { name: "Menu meja" });
-      expect((await menu.boundingBox())!.width).toBeCloseTo(
-        Math.min(384, page.viewportSize()!.width - 48),
-        0,
-      );
-      await expect.poll(async () => {
-        const box = (await menu.boundingBox())!;
-        return Math.round(box.x + box.width);
-      }).toBe(page.viewportSize()!.width);
+      await expect(menu).toBeVisible();
+      const expectedWidth = Math.min(520, page.viewportSize()!.width - 28);
+      await expect
+        .poll(async () => Math.round((await menu.boundingBox())!.width))
+        .toBe(expectedWidth);
+      const menuBox = (await menu.boundingBox())!;
+      expect(
+        Math.abs(menuBox.x + menuBox.width / 2 - page.viewportSize()!.width / 2),
+      ).toBeLessThanOrEqual(2);
       await menu.getByText("Kontrol host", { exact: true }).click();
       await menu.getByRole("button", { name: "Jeda", exact: true }).click();
       await menu.getByRole("button", { name: "Tutup" }).click();

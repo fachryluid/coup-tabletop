@@ -83,17 +83,23 @@ test("Steal menjelaskan pelaku, target, peran dan siapa yang merespons", async (
     await ctx.close();
   }
 });
-test("musik latar benar-benar diputar, diatur volumenya, ganti varian, dan dijeda", async ({
+test("musik latar diatur dari halaman pengaturan dan tidak tampil di header in-game", async ({
   page,
 }) => {
+  await page.goto("/settings");
+  const musicToggle = page
+    .locator(".settings-section")
+    .first()
+    .getByRole("button", { name: /Nonaktif|Aktif/ });
+  await expect(musicToggle).toHaveAttribute("aria-pressed", "false");
+  await musicToggle.click();
+  await expect(musicToggle).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel("Volume audio").fill("65");
+
+  // Kembali ke meja: audio diputar sesuai pengaturan dan header tetap bebas tombol sound
   await page.goto("/");
-  const trigger = page.getByRole("button", { name: "Musik latar" });
-  await expect(trigger).toHaveAttribute("aria-pressed", "false");
-  await trigger.click();
-  const panel = page.getByRole("region", { name: "Kontrol musik latar" });
-  await expect(panel).toBeVisible();
-  await panel.getByRole("button", { name: "Putar" }).click();
-  await expect(trigger).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Musik latar" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Buat meja privat" }).click();
   await expect
     .poll(() =>
       page
@@ -101,16 +107,34 @@ test("musik latar benar-benar diputar, diatur volumenya, ganti varian, dan dijed
         .evaluate((el) => (el as HTMLAudioElement).currentTime),
     )
     .toBeGreaterThan(0.1);
-  await panel.getByLabel("Volume musik").fill("65");
   expect(
     await page
       .locator("audio")
       .evaluate((el) => (el as HTMLAudioElement).volume),
   ).toBeCloseTo(0.65, 2);
-  await panel.getByRole("radio", { name: /Balairung Malam/ }).click();
-  await expect(trigger).toHaveAttribute("aria-pressed", "true");
-  await panel.getByRole("button", { name: "Matikan" }).click();
-  await expect(trigger).toHaveAttribute("aria-pressed", "false");
+
+  await page.getByLabel("Nama pemain").fill("Ayu");
+  await page.getByRole("button", { name: "Buat room" }).click();
+  await expect(page.getByRole("button", { name: "Musik latar" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Tambah computer" }).click();
+  await page.getByRole("button", { name: "Mulai pertandingan" }).click();
+  await expect(page.locator(".arena")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Musik latar" })).toHaveCount(0);
+  await expect(
+    page
+      .locator("header")
+      .getByRole("button", { name: "Kembali ke halaman awal" }),
+  ).toHaveCount(0);
+
+  // Matikan kembali dari halaman pengaturan
+  await page.goto("/settings");
+  const toggleOff = page
+    .locator(".settings-section")
+    .first()
+    .getByRole("button", { name: "Aktif" });
+  await toggleOff.click();
+  await expect(toggleOff).toHaveAttribute("aria-pressed", "false");
+  await page.goto("/");
   expect(
     await page
       .locator("audio")

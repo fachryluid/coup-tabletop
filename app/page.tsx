@@ -1,7 +1,23 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useState, useRef, useReducer, useCallback } from "react";
 import { io, type Socket } from "socket.io-client";
 import { windows, type Difficulty } from "../domain/model";
+import type { AuthStatePayload } from "../server/auth";
+import { AuthGate } from "./auth-gate";
+import { AccountMenu } from "./account-menu";
+import {
+  NicknameSuggestions,
+  useNicknameSuggestions,
+} from "./nickname-suggestions";
+import {
+  ActiveRoomReturnButton,
+  clearActiveRoom,
+  saveActiveRoom,
+} from "./active-room";
+import { BrandHeader, BrandHeroLogo, BrandMark } from "./brand-logo";
+import { ConfirmModal, type ConfirmOptions } from "./confirm-modal";
+import { UpdateBanner } from "./update-banner";
 import { MatchHistory } from "./match-history";
 import { ExtraRules } from "./extra-rules";
 import { CardThemePicker } from "./card-theme-picker";
@@ -12,7 +28,7 @@ import type { RoomView } from "../domain/view";
 import type { Command } from "../server/rooms";
 
 import { FullscreenButton } from "./fullscreen";
-import { VoiceChat } from "./voice-chat";
+import { VoiceChat, VoiceSpeakingBadge } from "./voice-chat";
 import { Music } from "./music";
 import { EmoteControl } from "./emote-control";
 import { HowToPlay } from "./how-to-play";
@@ -30,6 +46,72 @@ import { initialPlayback, playback, type Line } from "./table-playback";
 import { tableDialogue } from "./table-dialogue";
 import { TableScene } from "./table-scene";
 type Reply = { ok: boolean; error?: string; code?: string; token?: string };
+
+function SeatAvatar({
+  seat,
+  fallbackAvatar,
+}: {
+  seat: RoomView["seats"][number];
+  fallbackAvatar?: string;
+}) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const src = seat.avatar || fallbackAvatar;
+  const showPhoto = Boolean(src) && failedSrc !== src;
+
+  if (seat.difficulty) {
+    return (
+      <span className="seat-avatar" data-kind="bot" aria-hidden="true">
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.9"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="4" y="8" width="16" height="12" rx="2" />
+          <path d="M12 4v4M9 13h.01M15 13h.01M9 17h6" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (showPhoto && src) {
+    return (
+      <span className="seat-avatar" data-kind="photo" aria-hidden="true">
+        <img
+          src={src}
+          alt=""
+          width={40}
+          height={40}
+          referrerPolicy="no-referrer"
+          onError={() => setFailedSrc(src)}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span className="seat-avatar" data-kind="default" aria-hidden="true">
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="12" cy="8.5" r="4" />
+        <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+      </svg>
+    </span>
+  );
+}
+
 export default function Table() {
   const sock = useRef<Socket | null>(null);
   const [presentation, dispatch] = useReducer(playback, initialPlayback);
@@ -156,6 +238,7 @@ export default function Table() {
   const [name, setName] = useState(""),
     [code, setCode] = useState(""),
     [clock, setClock] = useState(0);
+  const nameDirty = useRef(false);
   const [menu, setMenu] = useState<"home" | "create" | "join">("home");
   const offset = useRef(0);
 
@@ -165,12 +248,96 @@ export default function Table() {
   const [copied, setCopied] = useState(false);
   const [renaming, setRenaming] = useState(false),
     [nextName, setNextName] = useState("");
+  const [confirmState, setConfirmState] = useState<ConfirmOptions | null>(null);
   const [hiddenRevision, setHiddenRevision] = useState<number | null>(null);
   const [emotes, setEmotes] = useState<Record<string, EmotePayload>>({});
+  const [voiceSpeaking, setVoiceSpeaking] = useState<Record<string, boolean>>(
+    {},
+  );
   const emoteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
+  const [auth, setAuth] = useState<AuthStatePayload | null>(null);
+  const [authErrorCode, setAuthErrorCode] = useState("");
+  const authReady =
+    auth !== null &&
+    (!auth.authRequired ||
+      (!!auth.user && !!auth.user.username && !!auth.user.termsAcceptedAt));
+  const authBlocked = auth !== null && !authReady;
+  const nicknameHistory = useNicknameSuggestions(
+    authReady && Boolean(auth?.user),
+  );
+
   useEffect(() => {
+    if (
+      (menu === "create" || menu === "join") &&
+      !nameDirty.current &&
+      !name &&
+      nicknameHistory.lastUsed
+    ) {
+      setName(nicknameHistory.lastUsed);
+    }
+  }, [menu, name, nicknameHistory.lastUsed]);
+
+  const refreshAuth = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!res.ok) throw Error("auth_fetch_failed");
+      const data = (await res.json()) as AuthStatePayload;
+      setAuth(data);
+    } catch {
+      // Fallback safely if /api/auth/me is temporarily unreachable
+      setAuth({
+        authRequired: false,
+        user: null,
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const err = params.get("authError");
+    if (err) {
+      setAuthErrorCode(err);
+      params.delete("authError");
+      const next = params.toString();
+      history.replaceState(
+        null,
+        "",
+        location.pathname + (next ? "?" + next : ""),
+      );
+    }
+    void refreshAuth();
+  }, [refreshAuth]);
+
+  const logout = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Ignore network error on logout
+    }
+    drawer.current?.close();
+    setConfirmState(null);
+    clearActiveRoom();
+    sock.current?.disconnect();
+    sock.current = null;
+    setOnline(false);
+    dispatch({ type: "clear" });
+    setEmotes({});
+    setVoiceSpeaking({});
+    setError("");
+    setMenu("home");
+    setAuthErrorCode("");
+    await refreshAuth();
+  }, [refreshAuth]);
+
+  useEffect(() => {
+    if (!authReady) {
+      sock.current?.disconnect();
+      sock.current = null;
+      setOnline(false);
+      return;
+    }
     const socket = io({ autoConnect: false });
     sock.current = socket;
     const timers = emoteTimers.current;
@@ -193,17 +360,34 @@ export default function Table() {
         }, 3200),
       );
     });
+    socket.on(
+      "voice:speaking",
+      ({ seatId, speaking }: { seatId: string; speaking: boolean }) => {
+        setVoiceSpeaking((prev) => {
+          if (Boolean(prev[seatId]) === speaking) return prev;
+          if (!speaking) {
+            const copy = { ...prev };
+            delete copy[seatId];
+            return copy;
+          }
+          return { ...prev, [seatId]: true };
+        });
+      },
+    );
     socket.on("left", () => {
-      localStorage.removeItem(
-        "coup:" + new URLSearchParams(location.search).get("room"),
-      );
+      const leavingCode =
+        new URLSearchParams(location.search).get("room") ?? undefined;
+      if (leavingCode) localStorage.removeItem("coup:" + leavingCode);
+      clearActiveRoom(leavingCode);
       history.replaceState(null, "", "/");
       dispatch({ type: "clear" });
       setEmotes({});
+      setVoiceSpeaking({});
       setCode("");
       setMenu("home");
     });
     socket.on("state", (v: RoomView) => {
+      saveActiveRoom(v.code);
       offset.current = v.serverTime - Date.now();
       setClock(v.serverTime);
       dispatch({ type: "snapshot", room: v, restore });
@@ -233,6 +417,7 @@ export default function Table() {
               setError(r.error ?? "Sesi berakhir.");
               dispatch({ type: "clear" });
               localStorage.removeItem("coup:" + roomCode);
+              clearActiveRoom(roomCode);
             }
           },
         );
@@ -242,10 +427,19 @@ export default function Table() {
       setOnline(false);
       setBusy(false);
       setLoadingLabel("");
+      setVoiceSpeaking({});
     });
-    socket.on("connect_error", () =>
-      setError("Server belum terhubung. Mencoba kembali…"),
-    );
+    socket.on("connect_error", (err: Error) => {
+      if (
+        err?.message === "AUTH_REQUIRED" ||
+        err?.message === "ONBOARDING_REQUIRED"
+      ) {
+        socket.disconnect();
+        void refreshAuth();
+        return;
+      }
+      setError("Server belum terhubung. Mencoba kembali…");
+    });
     socket.connect();
 
     return () => {
@@ -253,7 +447,7 @@ export default function Table() {
       timers.clear();
       socket.disconnect();
     };
-  }, []);
+  }, [authReady, auth?.user?.id, refreshAuth]);
   const deadline = room?.game?.deadline,
     paused = room?.game?.paused;
   useEffect(() => {
@@ -294,6 +488,33 @@ export default function Table() {
     );
   }
   const drawer = useRef<HTMLDialogElement>(null);
+  function restoreRoom(roomCode: string) {
+    const upper = roomCode.trim().toUpperCase();
+    const token = localStorage.getItem("coup:" + upper);
+    if (!token || !sock.current || !online || busy) {
+      if (!token) clearActiveRoom(upper);
+      return;
+    }
+    setBusy(true);
+    setLoadingLabel("Kembali ke meja…");
+    setError("");
+    sock.current.emit(
+      "enter",
+      { type: "restore", code: upper, token },
+      (r: Reply) => {
+        setBusy(false);
+        setLoadingLabel("");
+        if (!r.ok) {
+          setError(r.error ?? "Sesi meja sudah berakhir.");
+          localStorage.removeItem("coup:" + upper);
+          clearActiveRoom(upper);
+          return;
+        }
+        saveActiveRoom(upper);
+        history.replaceState(null, "", "?room=" + upper);
+      },
+    );
+  }
   function returnHome() {
     if (!room) {
       setMenu("home");
@@ -305,22 +526,34 @@ export default function Table() {
       send({ type: "leave" });
       return;
     }
-    const promptText = room.game
+    const activeCode = room.code;
+    const isInGame = !!room.game;
+    const promptText = isInGame
       ? "Kembali ke halaman awal? Pertandingan tetap berjalan dan Anda dapat kembali lewat tautan undangan."
       : "Kembali ke halaman awal dan tinggalkan tampilan lobi ini?";
-    if (!window.confirm(promptText)) return;
-    drawer.current?.close();
-    history.replaceState(null, "", "/");
-    dispatch({ type: "clear" });
-    setEmotes({});
-    setCode("");
-    setError("");
-    setMenu("home");
-    const socket = sock.current;
-    if (socket) {
-      socket.disconnect();
-      socket.connect();
-    }
+    setConfirmState({
+      title: isInGame ? "Kembali ke halaman awal?" : "Tinggalkan lobi?",
+      message: promptText,
+      confirmLabel: "Ya, kembali",
+      cancelLabel: "Batal",
+      tone: "danger",
+      onConfirm: () => {
+        drawer.current?.close();
+        clearActiveRoom(activeCode);
+        history.replaceState(null, "", "/");
+        dispatch({ type: "clear" });
+        setEmotes({});
+        setVoiceSpeaking({});
+        setCode("");
+        setError("");
+        setMenu("home");
+        const socket = sock.current;
+        if (socket) {
+          socket.disconnect();
+          socket.connect();
+        }
+      },
+    });
   }
   function enter(join: boolean) {
     if (!name.trim()) {
@@ -341,7 +574,9 @@ export default function Table() {
           return;
         }
         localStorage.setItem("coup:" + r.code, r.token!);
+        saveActiveRoom(r.code!);
         history.replaceState(null, "", "?room=" + r.code);
+        void nicknameHistory.refresh();
       },
     );
   }
@@ -368,6 +603,7 @@ export default function Table() {
           <tr>
             <th>Pemain</th>
             <th>Menang</th>
+            <th>Poin</th>
           </tr>
         </thead>
         <tbody>
@@ -375,6 +611,7 @@ export default function Table() {
             <tr key={row.id}>
               <td>{row.name}</td>
               <td>{row.wins}</td>
+              <td>{row.points}</td>
             </tr>
           ))}
         </tbody>
@@ -497,12 +734,15 @@ export default function Table() {
                 latest.matchRevision !== room.matchRevision
               }
               onClick={() => {
-                if (
-                  window.confirm(
+                setConfirmState({
+                  title: "Akhiri pertandingan?",
+                  message:
                     "Akhiri pertandingan ini tanpa pemenang? Skor sesi tetap sama.",
-                  )
-                )
-                  send({ type: "endMatch" });
+                  confirmLabel: "Akhiri pertandingan",
+                  cancelLabel: "Batal",
+                  tone: "danger",
+                  onConfirm: () => send({ type: "endMatch" }),
+                });
               }}
             >
               Akhiri pertandingan
@@ -524,50 +764,33 @@ export default function Table() {
     </aside>
   );
   const onTable = !!g || (!!room && frames.length > 0);
-  const loaderText = !online
-    ? "Menghubungkan ke meja…"
-    : loadingLabel || (slowBusy ? "Memproses…" : "");
+  const loaderText =
+    auth === null
+      ? "Memeriksa sesi…"
+      : authBlocked
+        ? ""
+        : !online
+          ? "Menghubungkan ke meja…"
+          : loadingLabel || (slowBusy ? "Memproses…" : "");
   return (
     <main
       className={onTable ? "in-match" : room ? "lobby-screen" : "start-screen"}
     >
       <header>
-        <b className="mark" aria-hidden="true">
-          C
-        </b>
-        <span>Coup Digital Tabletop</span>
+        <BrandHeader />
         <div className="table-dock" role="group" aria-label="Kontrol tampilan">
+          {!room && authReady && (
+            <ActiveRoomReturnButton onReturn={restoreRoom} />
+          )}
           <FullscreenButton />
-          <Music />
+          <Music hiddenTrigger />
           {room && g && online && sock.current && (
             <EmoteControl key={"emote-" + room.code + room.me} socket={sock.current} />
           )}
-          {room && online && sock.current && (
+          {room && g && online && sock.current && (
             <VoiceChat key={room.code + room.me} socket={sock.current} />
           )}
-          {room && (
-            <button
-              type="button"
-              onClick={returnHome}
-              aria-label="Kembali ke halaman awal"
-              title="Kembali ke halaman awal"
-            >
-              <svg
-                aria-hidden="true"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5.5v-6.5h-5V21H4a1 1 0 0 1-1-1v-9.5Z" />
-              </svg>
-            </button>
-          )}
-          {room && (
+          {room && g && (
             <button
               type="button"
               aria-haspopup="dialog"
@@ -590,17 +813,24 @@ export default function Table() {
               </svg>
             </button>
           )}
+          {auth !== null && (
+            <AccountMenu user={auth.user} onLogout={logout} />
+          )}
         </div>
       </header>
       {error && <p role="alert">{error}</p>}
-      <fieldset disabled={!online || busy} data-revision={room?.revision}>
+      {!room && <UpdateBanner />}
+      <fieldset
+        disabled={(!authBlocked && !online) || busy}
+        data-revision={room?.revision}
+      >
         {!room ? (
           <>
             <article className="start-stage">
               <div
                 className="start-art"
                 aria-hidden="true"
-                data-playing={menu === "home"}
+                data-playing={menu === "home" || authBlocked}
               >
                 {["contessa", "captain", "duke", "assassin", "ambassador"].map(
                   (role, index, slides) => (
@@ -617,9 +847,19 @@ export default function Table() {
                 )}
               </div>
               <div className="start-content">
-                {menu === "home" ? (
+                {authBlocked && auth ? (
+                  <AuthGate
+                    auth={auth}
+                    authErrorCode={authErrorCode}
+                    onUpdated={(next) => {
+                      setAuthErrorCode("");
+                      setAuth(next);
+                    }}
+                    onLogout={logout}
+                  />
+                ) : menu === "home" ? (
                   <>
-                    <h1 className="game-title">Coup</h1>
+                    <BrandHeroLogo />
                     <p>Meja privat · 2–6 pemain</p>
                     <div className="start-commands">
                       <button
@@ -675,15 +915,33 @@ export default function Table() {
                       Nama pemain
                       <input
                         className="nickname-field"
-                        placeholder="Nama panggilan"
+                        placeholder="Nama panggilan di meja (bebas)"
                         autoFocus
                         required
                         maxLength={32}
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        onChange={(e) => {
+                          nameDirty.current = true;
+                          setName(e.target.value);
+                        }}
                         autoComplete="nickname"
                       />
                     </label>
+                    <NicknameSuggestions
+                      suggestions={nicknameHistory.suggestions}
+                      lastUsed={nicknameHistory.lastUsed}
+                      currentValue={name}
+                      onPick={(picked) => {
+                        nameDirty.current = true;
+                        setName(picked);
+                      }}
+                    />
+                    {auth?.user?.username && (
+                      <small className="nickname-freedom-note">
+                        Akun <b>@{auth.user.username}</b> · bebas memakai nama
+                        panggilan lain saat bermain.
+                      </small>
+                    )}
                     {menu === "join" && (
                       <label>
                         Kode undangan
@@ -709,17 +967,26 @@ export default function Table() {
                 )}
               </div>
             </article>
-            {menu === "home" && (
+            {(menu === "home" || authBlocked) && (
               <HowToPlay
                 onStart={() => {
                   setError("");
-                  setMenu("create");
+                  if (authReady) setMenu("create");
                   document
                     .querySelector(".start-stage")
                     ?.scrollIntoView({ behavior: "smooth" });
                 }}
               />
             )}
+            <footer className="site-legal-foot">
+              <small>The Ultimate Coup</small>
+              <span aria-hidden="true">·</span>
+              <Link href="/updates">Catatan Pembaruan</Link>
+              <span aria-hidden="true">·</span>
+              <Link href="/terms">Syarat &amp; Ketentuan</Link>
+              <span aria-hidden="true">·</span>
+              <Link href="/privacy">Kebijakan Privasi</Link>
+            </footer>
           </>
         ) : !room.game && frames.length ? (
           <>
@@ -770,7 +1037,11 @@ export default function Table() {
                 </small>
               )}
               {!g && (
-                <div className="lobby-title-actions">
+                <div
+                  className="lobby-title-actions"
+                  role="group"
+                  aria-label="Kontrol lobi"
+                >
                   <button
                     type="button"
                     className="with-icon lobby-home-btn"
@@ -831,6 +1102,31 @@ export default function Table() {
                     </svg>
                     {copied && <span className="copy-toast">Disalin</span>}
                   </button>
+                  {online && sock.current && (
+                    <VoiceChat key={room.code + room.me} socket={sock.current} />
+                  )}
+                  <button
+                    type="button"
+                    className="icon-btn lobby-settings-btn"
+                    aria-haspopup="dialog"
+                    onClick={() => drawer.current?.showModal()}
+                    aria-label="Menu meja"
+                    title="Pengaturan meja"
+                  >
+                    <svg
+                      aria-hidden="true"
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    >
+                      <path d="M3 7h8m4 0h6M3 17h2m4 0h12" />
+                      <circle cx="13" cy="7" r="2" />
+                      <circle cx="7" cy="17" r="2" />
+                    </svg>
+                  </button>
                 </div>
               )}
             </div>
@@ -856,6 +1152,7 @@ export default function Table() {
                         : undefined
                     }
                     emotes={emotes}
+                    voiceSpeaking={voiceSpeaking}
                     onDelivery={onDelivery}
                   >
                     {canAct && actionHidden && (
@@ -916,7 +1213,15 @@ export default function Table() {
                     {room.seats.map((s) => {
                       const isMe = s.id === room.me;
                       return (
-                        <div className="seat" key={s.id}>
+                        <div
+                          className="seat"
+                          key={s.id}
+                          data-voice-speaking={!!voiceSpeaking[s.id] || undefined}
+                        >
+                          <SeatAvatar
+                            seat={s}
+                            fallbackAvatar={isMe ? auth?.user?.picture : undefined}
+                          />
                           <div className="seat-identity">
                             {isMe && renaming ? (
                               <form
@@ -934,6 +1239,7 @@ export default function Table() {
                                     return;
                                   }
                                   send({ type: "rename", name: trimmed });
+                                  void nicknameHistory.refresh();
                                 }}
                               >
                                 <input
@@ -952,10 +1258,22 @@ export default function Table() {
                                     }
                                   }}
                                 />
+                                <NicknameSuggestions
+                                  compact
+                                  suggestions={nicknameHistory.suggestions}
+                                  lastUsed={nicknameHistory.lastUsed}
+                                  currentValue={nextName}
+                                  onPick={(picked) => setNextName(picked)}
+                                />
                               </form>
                             ) : (
                               <>
-                                <b>{s.name}</b>
+                                <span className="seat-name-row">
+                                  <b>{s.name}</b>
+                                  {voiceSpeaking[s.id] && (
+                                    <VoiceSpeakingBadge />
+                                  )}
+                                </span>
                                 <small>
                                   {[
                                     isMe ? "Anda" : "",
@@ -1210,42 +1528,63 @@ export default function Table() {
           className="table-menu"
           aria-label="Menu meja"
           onClick={(e) => {
-            if (
-              e.target === e.currentTarget &&
-              e.clientX < e.currentTarget.getBoundingClientRect().left
-            )
-              drawer.current?.close();
+            if (e.target === e.currentTarget) drawer.current?.close();
           }}
         >
-          <div className="drawer-title">
+          <div className="table-menu-head">
             <h2>Menu meja</h2>
-            <button type="button" onClick={() => drawer.current?.close()}>
-              Tutup
+            <button
+              type="button"
+              className="icon-btn rules-close-btn"
+              aria-label="Tutup"
+              title="Tutup"
+              onClick={() => drawer.current?.close()}
+            >
+              <svg
+                aria-hidden="true"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
             </button>
           </div>
-          <fieldset disabled={!online || busy}>{tableTools}</fieldset>
-          <button
-            type="button"
-            className="drawer-home-btn with-icon"
-            onClick={returnHome}
-          >
-            <svg
-              aria-hidden="true"
-              width="17"
-              height="17"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          <div className="table-menu-body">
+            <fieldset disabled={!online || busy}>{tableTools}</fieldset>
+          </div>
+          <div className="table-menu-foot">
+            <button
+              type="button"
+              className="drawer-home-btn with-icon"
+              onClick={returnHome}
             >
-              <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5.5v-6.5h-5V21H4a1 1 0 0 1-1-1v-9.5Z" />
-            </svg>
-            <span>Kembali ke halaman awal</span>
-          </button>
+              <svg
+                aria-hidden="true"
+                width="17"
+                height="17"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5.5v-6.5h-5V21H4a1 1 0 0 1-1-1v-9.5Z" />
+              </svg>
+              <span>Kembali ke halaman awal</span>
+            </button>
+          </div>
         </dialog>
       )}
+      <ConfirmModal
+        config={confirmState}
+        onClose={() => setConfirmState(null)}
+      />
       {loaderText && (
         <div
           className="screen-loader"
@@ -1257,7 +1596,7 @@ export default function Table() {
           <div className="screen-loader-card">
             <span className="screen-loader-spinner" aria-hidden="true">
               <span className="screen-loader-ring" />
-              <b className="screen-loader-crest">C</b>
+              <BrandMark className="screen-loader-crest-svg" size={34} />
             </span>
             <p className="screen-loader-text">{loaderText}</p>
           </div>

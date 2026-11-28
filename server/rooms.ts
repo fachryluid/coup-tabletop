@@ -19,10 +19,14 @@ import {
   player,
   legal,
 } from "../domain/engine";
-import { observe, type RoomView } from "../domain/view";
+import { observe, type RoomView, type SessionStanding } from "../domain/view";
 import { decide, supportedRules } from "../domain/bot";
+import { pickUniqueBotName } from "../domain/bot-names";
 import { rules } from "../domain/house-rules";
 import { cardThemeIds, type CardThemeId } from "../domain/card-themes";
+import { computeDetailedMatchMetrics } from "../domain/match-stats";
+import { computeMatchPlacements } from "../domain/scoring";
+import type { RecordMatchInput } from "./db";
 
 export const nick = z.string().trim().min(1).max(32);
 const move = z
@@ -107,6 +111,10 @@ export interface Room {
   code: string;
   host: string;
   seats: Seat[];
+  /** Server-only seatId -> accountId mapping (never exposed in public RoomView). */
+  seatAccounts: Map<string, string>;
+  /** Public profile picture URL per human seat (optional, for lobby avatar). */
+  seatAvatars: Map<string, string>;
   tokens: Map<string, string>;
   online: Map<string, string>;
   config: Config;
@@ -114,7 +122,10 @@ export interface Room {
   revision: number;
   game?: Game;
   matchRevision?: number;
-  wins: Map<string, { id: string; name: string; wins: number }>;
+  matchStartedAt?: string;
+  scoredMatchId?: string;
+  recordedMatchId?: string;
+  wins: Map<string, SessionStanding>;
   previousWinner?: string;
   botNumber: number;
 }
@@ -140,8 +151,14 @@ export class Tables {
     private delay = 5000,
     private rng = random,
     private firstSeat: (size: number) => number = randomInt,
+    private onMatchFinished?: (record: RecordMatchInput) => void,
   ) {}
-  create(name: string, houseRules: Partial<Omit<Config, "timer">> = {}) {
+  create(
+    name: string,
+    houseRules: Partial<Omit<Config, "timer">> = {},
+    accountId?: string,
+    avatar?: string,
+  ) {
     let code: string;
     do {
       code = randomBytes(5).toString("hex").toUpperCase();
@@ -151,6 +168,8 @@ export class Tables {
       code,
       host,
       seats: [],
+      seatAccounts: new Map(),
+      seatAvatars: new Map(),
       tokens: new Map(),
       online: new Map(),
       config: { ...defaults, ...houseRules },
@@ -159,14 +178,29 @@ export class Tables {
       revision: 0,
       botNumber: 0,
     };
-    return this.admit(room, name, host);
+    return this.admit(room, name, host, accountId, avatar);
   }
   find(code: string) {
     const room = this.repo.get(code);
     if (!room) throw Error("Room tidak ditemukan.");
     return room;
   }
-  admit(room: Room, name: string, id: string = randomUUID()) {
+  hasSession(code: string, token: string): boolean {
+    const normalized = code.trim().toUpperCase();
+    if (!normalized || !token) return false;
+    const room = this.repo.get(normalized);
+    if (!room) return false;
+    const seatId = room.tokens.get(token);
+    if (!seatId) return false;
+    return room.seats.some((s) => s.id === seatId);
+  }
+  admit(
+    room: Room,
+    name: string,
+    id: string = randomUUID(),
+    accountId?: string,
+    avatar?: string,
+  ) {
     name = nick.parse(name);
     if (room.game || room.seats.length >= 6)
       throw Error("Room sudah bermain atau penuh.");
@@ -174,15 +208,27 @@ export class Tables {
       throw Error("Nama ini sudah digunakan.");
     const token = randomBytes(32).toString("base64url");
     room.seats.push({ name, id });
+    if (accountId) room.seatAccounts.set(id, accountId);
+    if (avatar) room.seatAvatars.set(id, avatar);
     room.tokens.set(token, id);
     room.revision++;
     this.repo.save(room);
     return { room, id, token };
   }
-  restore(code: string, token: string) {
+  restore(code: string, token: string, accountId?: string, avatar?: string) {
     const room = this.find(code),
       id = room.tokens.get(token);
     if (!id) throw Error("Sesi tidak berlaku.");
+    let updated = false;
+    if (accountId && room.seatAccounts.get(id) !== accountId) {
+      room.seatAccounts.set(id, accountId);
+      updated = true;
+    }
+    if (avatar && room.seatAvatars.get(id) !== avatar) {
+      room.seatAvatars.set(id, avatar);
+      updated = true;
+    }
+    if (updated) this.repo.save(room);
     this.expire(room);
     return { room, id, token };
   }
@@ -198,20 +244,32 @@ export class Tables {
       seats: room.seats.map((p) => ({
         ...p,
         online: !!p.difficulty || room.online.has(p.id),
+        ...(room.seatAvatars.get(p.id)
+          ? { avatar: room.seatAvatars.get(p.id) }
+          : {}),
       })),
       leaderboard: [
-        ...new Map([
+        ...new Map<string, SessionStanding>([
           ...room.seats.map(
-            (s) => [s.id, { id: s.id, name: s.name, wins: 0 }] as const,
+            (s) => [s.id, { id: s.id, name: s.name, points: 0, wins: 0 }] as const,
           ),
           ...room.wins,
         ]).values(),
-      ].sort((a, b) => b.wins - a.wins),
+      ].sort(
+        (a, b) =>
+          b.points - a.points ||
+          b.wins - a.wins ||
+          a.name.localeCompare(b.name),
+      ),
       matchRevision: room.matchRevision,
       game: room.game ? observe(room.game, id) : undefined,
     };
   }
   private startMatch(room: Room) {
+    for (const entry of room.wins.values()) {
+      delete entry.lastPoints;
+      delete entry.lastRank;
+    }
     const game = deal(
       room.seats,
       room.config,
@@ -226,8 +284,106 @@ export class Tables {
       " " + player(game, game.turn).name + " mendapat giliran pertama.";
     room.game = game;
     room.matchRevision = room.revision + 1;
+    room.matchStartedAt = new Date().toISOString();
+    room.scoredMatchId = undefined;
+    room.recordedMatchId = undefined;
+  }
+  private scoreCompletedMatch(room: Room) {
+    const g = room.game;
+    if (!g || g.stage !== "over" || !g.winner) return;
+    if (room.scoredMatchId === g.matchId) return;
+    room.scoredMatchId = g.matchId;
+    room.previousWinner = g.winner;
+    for (const placement of computeMatchPlacements(g)) {
+      const prev = room.wins.get(placement.id);
+      room.wins.set(placement.id, {
+        id: placement.id,
+        name: placement.name,
+        points: (prev?.points ?? 0) + placement.points,
+        wins: (prev?.wins ?? 0) + (placement.rank === 1 ? 1 : 0),
+        lastPoints: placement.points,
+        lastRank: placement.rank,
+      });
+    }
+  }
+  private persistCompletedMatch(room: Room) {
+    const g = room.game;
+    if (!g || g.stage !== "over" || !this.onMatchFinished) return;
+    if (room.recordedMatchId === g.matchId) return;
+    room.recordedMatchId = g.matchId;
+
+    const detailed = computeDetailedMatchMetrics(
+      g.log,
+      g.bluffs ?? {},
+      g.players.map((p) => p.id),
+    );
+    const placements = new Map(
+      computeMatchPlacements(g).map((item) => [item.id, item]),
+    );
+    const finishedAt = new Date().toISOString();
+    const startedAt = room.matchStartedAt ?? finishedAt;
+    const winnerPlayer = g.winner
+      ? g.players.find((p) => p.id === g.winner)
+      : undefined;
+    const humanCount = g.players.filter((p) => !p.difficulty).length;
+    const botCount = g.players.length - humanCount;
+
+    const payload: RecordMatchInput = {
+      matchId: g.matchId,
+      roomCode: room.code,
+      matchMode: "private",
+      endedReason: g.winner ? "completed" : "host_ended",
+      winnerAccountId: winnerPlayer
+        ? room.seatAccounts.get(winnerPlayer.id)
+        : undefined,
+      winnerName: winnerPlayer?.name,
+      winnerIsBot: Boolean(winnerPlayer?.difficulty),
+      seatCount: g.players.length,
+      humanCount,
+      botCount,
+      timerEnabled: g.config.timer,
+      oneTimeGuess: g.config.one_time_guess,
+      dukeBlocksTax: g.config.duke_blocks_tax,
+      cardTheme: g.cardTheme ?? room.cardTheme,
+      totalActions: detailed.totalActions,
+      totalChallenges: detailed.totalChallenges,
+      totalBlocks: detailed.totalBlocks,
+      startedAt,
+      finishedAt,
+      participants: g.players.map((p) => {
+        const m = detailed.bySeat.get(p.id);
+        const placement = placements.get(p.id);
+        return {
+          seatId: p.id,
+          accountId: room.seatAccounts.get(p.id),
+          nickname: p.name,
+          isBot: Boolean(p.difficulty),
+          botDifficulty: p.difficulty,
+          isWinner: p.id === g.winner,
+          placementRank: placement?.rank,
+          pointsEarned: placement?.points ?? 0,
+          guessBonus: placement?.guessBonus ?? 0,
+          finalInfluence: p.hand.length,
+          finalCoins: p.coins,
+          peakCoins: Math.max(m?.peakCoins ?? 0, p.coins),
+          attacksMade: m?.attacksMade ?? 0,
+          timesTargeted: m?.timesTargeted ?? 0,
+          challengesMade: m?.challengesMade ?? 0,
+          blocksMade: m?.blocksMade ?? 0,
+          bluffsMade: m?.bluffsMade ?? 0,
+        };
+      }),
+    };
+
+    try {
+      this.onMatchFinished(payload);
+    } catch (error) {
+      console.error("Gagal mencatat hasil pertandingan ke database:", error);
+    }
   }
   private changed(room: Room) {
+    this.scoreCompletedMatch(room);
+    this.persistCompletedMatch(room);
     room.revision++;
     this.repo.save(room);
     this.schedule(room);
@@ -267,6 +423,8 @@ export class Tables {
     if (cmd.type === "leave") {
       if (g || id === room.host) throw Error("Kursi ini terkunci.");
       room.seats = room.seats.filter((s) => s.id !== id);
+      room.seatAccounts.delete(id);
+      room.seatAvatars.delete(id);
       for (const [token, seat] of room.tokens)
         if (seat === id) room.tokens.delete(token);
     } else if (cmd.type === "rename") {
@@ -288,15 +446,6 @@ export class Tables {
     } else if (cmd.type === "play") {
       if (!g) throw Error("Pertandingan belum dimulai.");
       room.game = play(g, id, cmd.move, now, this.rng);
-      const winner = room.game.winner;
-      if (winner) {
-        room.previousWinner = winner;
-        room.wins.set(winner, {
-          id: winner,
-          name: player(g, winner).name,
-          wins: (room.wins.get(winner)?.wins ?? 0) + 1,
-        });
-      }
     } else {
       if (id !== room.host) throw Error("Kontrol ini khusus host.");
       if (!g) {
@@ -312,14 +461,11 @@ export class Tables {
             break;
           case "add": {
             if (room.seats.length >= 6) throw Error("Room penuh.");
-            let name: string;
-            do {
-              name = "Computer " + ++room.botNumber;
-            } while (
-              room.seats.some(
-                (s) => s.name.toLowerCase() === name.toLowerCase(),
-              )
+            const name = pickUniqueBotName(
+              room.seats.map((s) => s.name),
+              this.rng,
             );
+            room.botNumber++;
             room.seats.push({ id: randomUUID(), name, difficulty: "normal" });
             break;
           }

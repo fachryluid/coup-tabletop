@@ -10,6 +10,21 @@ type SynthTrackId =
 
 export type TrackId = "meja-senja" | SynthTrackId;
 
+export const AUDIO_SETTINGS_EVENT = "coup:audio-settings";
+
+export type AudioSettingsChange =
+  | { kind: "music"; enabled: boolean; track?: TrackId; volume?: number }
+  | { kind: "track"; track: TrackId; enabled?: boolean; volume?: number }
+  | { kind: "volume"; volume: number }
+  | { kind: "sfx"; enabled: boolean };
+
+export function notifyAudioSettings(detail: AudioSettingsChange): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<AudioSettingsChange>(AUDIO_SETTINGS_EVENT, { detail }),
+  );
+}
+
 type Track = {
   id: TrackId;
   name: string;
@@ -136,7 +151,7 @@ function isValidTrack(value: string | null): value is TrackId {
   return MUSIC_TRACKS.some((t) => t.id === value);
 }
 
-export function Music() {
+export function Music({ hiddenTrigger = false }: { hiddenTrigger?: boolean } = {}) {
   const player = useRef<HTMLAudioElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<AudioContext | null>(null);
@@ -148,8 +163,10 @@ export function Music() {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState(false);
   const [track, setTrack] = useState<TrackId>("meja-senja");
-  const [volume, setVolume] = useState(0.35);
+  const [volume, setVolume] = useState(0.45);
   const [sfx, setSfx] = useState(true);
+  const trackRef = useRef<TrackId>("meja-senja");
+  const volumeRef = useRef(0.45);
 
   const stopSynth = useCallback(() => {
     if (synthTimer.current !== null) {
@@ -287,29 +304,128 @@ export function Music() {
     const initialTrack: TrackId = isValidTrack(savedTrack)
       ? savedTrack
       : "meja-senja";
-    const savedVol = Number(localStorage.getItem("coup:music-volume"));
+    const rawVol = localStorage.getItem("coup:music-volume");
+    const savedVol = rawVol !== null && rawVol.trim() !== "" ? Number(rawVol) : NaN;
     const initialVol =
       Number.isFinite(savedVol) && savedVol >= 0 && savedVol <= 1
         ? savedVol
-        : 0.35;
+        : 0.45;
 
     setTrack(initialTrack);
     setVolume(initialVol);
+    trackRef.current = initialTrack;
+    volumeRef.current = initialVol;
     setSfx(isSfxEnabled());
     if (player.current) player.current.volume = initialVol;
 
-    // Restore where autoplay is allowed. Otherwise the switch starts playback on tap.
+    // Restore where autoplay is allowed; otherwise resume on first user gesture.
+    let resumeOnTap: (() => void) | undefined;
+    const clearResumeTap = () => {
+      if (resumeOnTap) {
+        document.removeEventListener("pointerdown", resumeOnTap);
+        resumeOnTap = undefined;
+      }
+    };
     if (localStorage.getItem("coup:music") === "on") {
-      startTrack(initialTrack, initialVol).catch(() => {});
+      startTrack(initialTrack, initialVol).catch(() => {
+        resumeOnTap = () => {
+          clearResumeTap();
+          if (localStorage.getItem("coup:music") === "on") {
+            void startTrack(trackRef.current, volumeRef.current).catch(() => {});
+          }
+        };
+        document.addEventListener("pointerdown", resumeOnTap, { passive: true });
+      });
     }
+
+    const applyVolume = (nextVol: number) => {
+      const clamped = Math.max(0, Math.min(1, nextVol));
+      volumeRef.current = clamped;
+      setVolume(clamped);
+      if (player.current) player.current.volume = clamped;
+      if (masterRef.current && ctxRef.current) {
+        masterRef.current.gain.setTargetAtTime(
+          clamped * 0.45,
+          ctxRef.current.currentTime,
+          0.03,
+        );
+      }
+    };
+
+    const onAudioSettings = (event: Event) => {
+      const detail = (event as CustomEvent<AudioSettingsChange>).detail;
+      if (!detail) return;
+      if (detail.kind === "volume") {
+        applyVolume(detail.volume);
+        return;
+      }
+      if (detail.kind === "sfx") {
+        setSfx(detail.enabled);
+        return;
+      }
+      if (detail.kind === "track") {
+        clearResumeTap();
+        trackRef.current = detail.track;
+        setTrack(detail.track);
+        const nextVol =
+          detail.volume !== undefined ? detail.volume : volumeRef.current;
+        if (detail.volume !== undefined) applyVolume(detail.volume);
+        if (detail.enabled !== false) {
+          void startTrack(detail.track, nextVol).catch(() => setError(true));
+        }
+        return;
+      }
+      if (detail.kind === "music") {
+        clearResumeTap();
+        if (detail.track) {
+          trackRef.current = detail.track;
+          setTrack(detail.track);
+        }
+        if (detail.volume !== undefined) applyVolume(detail.volume);
+        if (!detail.enabled) {
+          stopAll();
+        } else {
+          void startTrack(trackRef.current, volumeRef.current).catch(() =>
+            setError(true),
+          );
+        }
+      }
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "coup:music-volume" && event.newValue !== null) {
+        const parsed = Number(event.newValue);
+        if (Number.isFinite(parsed)) applyVolume(parsed);
+      } else if (event.key === "coup:sfx") {
+        setSfx(event.newValue !== "off");
+      } else if (event.key === "coup:music-track" && isValidTrack(event.newValue)) {
+        trackRef.current = event.newValue;
+        setTrack(event.newValue);
+        if (localStorage.getItem("coup:music") === "on") {
+          void startTrack(event.newValue, volumeRef.current).catch(() => {});
+        }
+      } else if (event.key === "coup:music") {
+        if (event.newValue === "on") {
+          void startTrack(trackRef.current, volumeRef.current).catch(() => {});
+        } else {
+          stopAll();
+        }
+      }
+    };
+
+    window.addEventListener(AUDIO_SETTINGS_EVENT, onAudioSettings);
+    window.addEventListener("storage", onStorage);
     return () => {
+      clearResumeTap();
+      window.removeEventListener(AUDIO_SETTINGS_EVENT, onAudioSettings);
+      window.removeEventListener("storage", onStorage);
       stopSynth();
       player.current?.pause();
       void ctxRef.current?.close().catch(() => {});
       ctxRef.current = null;
       masterRef.current = null;
     };
-  }, [startTrack, stopSynth]);
+  }, [startTrack, stopAll, stopSynth]);
 
   useEffect(() => {
     if (!open) return;
@@ -344,10 +460,11 @@ export function Music() {
   }
 
   async function selectTrack(next: TrackId) {
+    trackRef.current = next;
     setTrack(next);
     localStorage.setItem("coup:music-track", next);
     try {
-      await startTrack(next, volume);
+      await startTrack(next, volumeRef.current);
       localStorage.setItem("coup:music", "on");
     } catch {
       setError(true);
@@ -356,6 +473,7 @@ export function Music() {
 
   function changeVolume(next: number) {
     const clamped = Math.max(0, Math.min(1, next));
+    volumeRef.current = clamped;
     setVolume(clamped);
     localStorage.setItem("coup:music-volume", String(clamped));
     if (player.current) player.current.volume = clamped;
@@ -372,7 +490,10 @@ export function Music() {
     MUSIC_TRACKS.find((t) => t.id === track) ?? MUSIC_TRACKS[0];
 
   return (
-    <div className="music-control" ref={wrap}>
+    <div
+      className={hiddenTrigger ? "music-control music-control-hidden" : "music-control"}
+      ref={wrap}
+    >
       <audio
         ref={player}
         loop
@@ -385,6 +506,7 @@ export function Music() {
           if (track === "meja-senja") setOn(false);
         }}
       />
+      {!hiddenTrigger && (
       <button
         type="button"
         aria-label="Musik latar"
@@ -416,7 +538,8 @@ export function Music() {
           )}
         </svg>
       </button>
-      {open && (
+      )}
+      {!hiddenTrigger && open && (
         <div
           className="music-popover"
           role="region"

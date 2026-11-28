@@ -1,6 +1,7 @@
 import { legal, player, eligibleResponders } from "./engine";
 import { phaseStamp, type Game, type Seat, type Config } from "./model";
 import type { CardThemeId } from "./card-themes";
+import { computeMatchPlacements, type MatchPlacement } from "./scoring";
 const alignArt = (cards: unknown[], arts?: number[]) =>
   cards.map((_, i) => arts?.[i] ?? 0);
 export function observe(g: Game, id: string) {
@@ -53,6 +54,8 @@ export function observe(g: Game, id: string) {
     paused: g.paused,
     loss: g.loss?.id,
     winner: g.winner,
+    matchResults:
+      g.stage === "over" && g.winner ? computeMatchPlacements(g) : undefined,
     bluffs: g.stage === "over" ? { ...(g.bluffs ?? {}) } : undefined,
     log: g.log.map((e) => ({ ...e })),
     canUndo: !!g.undo,
@@ -65,15 +68,24 @@ export function observe(g: Game, id: string) {
   };
 }
 export type BotObservation = ReturnType<typeof observe>;
+export interface SessionStanding {
+  id: string;
+  name: string;
+  points: number;
+  wins: number;
+  lastPoints?: number;
+  lastRank?: number;
+}
+export type { MatchPlacement };
 export interface RoomView {
   code: string;
   revision: number;
-  leaderboard?: { id: string; name: string; wins: number }[];
+  leaderboard?: SessionStanding[];
   matchRevision?: number;
   serverTime: number;
   host: string;
   me: string;
-  seats: (Seat & { online: boolean })[];
+  seats: (Seat & { online: boolean; avatar?: string })[];
   config: Config;
   cardTheme: CardThemeId;
   game?: BotObservation;
